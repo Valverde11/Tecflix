@@ -1,0 +1,38 @@
+name: C++ CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Package API executables
+        run: cmake --install build --config Release --prefix package
+
+      - name: Upload API executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: tecflix-apis-${{ matrix.os }}
+          path: package/bin/
+          if-no-files-found: error

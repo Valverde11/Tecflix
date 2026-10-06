@@ -34,6 +34,7 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 ### 3.2. API de Usuarios (C++)
 - **Ruta/Ubicación:** `/services/user-service`
 - **Interfaz:** REST API en C++ (usando Crow, Pistache o HTTPLib)[cite: 2].
+- **Comprobación de salud:** `GET /health` devuelve HTTP 200 y `{"status":"ok","service":"users-api"}` cuando el servicio está disponible.
 - **Requerimientos Funcionales:**
   - Gestión CRUD completa de usuarios (Registrar, Consultar, Actualizar, Eliminar)[cite: 2].
   - Persistence Engine: Guardado directo en **archivo binario** personalizado[cite: 2].
@@ -42,6 +43,7 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 ### 3.3. API de Metadata (C++)
 - **Ruta/Ubicación:** `/services/metadata-service`
 - **Interfaz:** REST API en C++[cite: 2].
+- **Comprobación de salud:** `GET /health` devuelve HTTP 200 y `{"status":"ok","service":"metadata-api"}` cuando el servicio está disponible.
 - **Requerimientos Funcionales:**
   - Gestión de metadatos de videos: autor, duración, fecha de carga, título, tema, etiquetas y estado de visibilidad[cite: 1, 2].
   - Integración directa con MongoDB usando `mongocxx` driver[cite: 2].
@@ -50,6 +52,7 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 ### 3.4. API de Streaming (C++)
 - **Ruta/Ubicación:** `/services/streaming-service`
 - **Interfaz:** REST API en C++[cite: 2].
+- **Comprobación de salud:** `GET /health` devuelve HTTP 200 y `{"status":"ok","service":"streaming-api"}` cuando el servicio está disponible.
 - **Requerimientos Funcionales:**
   - Transcodificación de videos en background al momento de la carga mediante **FFMPEG** (conversión a segmentos HLS/DASH)[cite: 2].
   - Servicio de entrega de bloques/chunks de video hacia el reproductor web de manera eficiente[cite: 2].
