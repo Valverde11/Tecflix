@@ -85,5 +85,3 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 2. Los componentes del frontend deben estar fuertemente tipados con Interfaces de TypeScript sin usar `any`.
 3. Todos los endpoints REST deben cumplir con respuestas en formato JSON estandarizado y códigos de estado HTTP apropiados.
 4. El pipeline en GitHub Actions debe ejecutarse sin errores antes de consolidar ramas o crear tags para V1.0 y V2.0[cite: 3, 4].
-
-## 6. Agent Memory
