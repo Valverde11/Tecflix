@@ -87,3 +87,7 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 4. El pipeline en GitHub Actions debe ejecutarse sin errores antes de consolidar ramas o crear tags para V1.0 y V2.0[cite: 3, 4].
 
 ## 6. Agent Memory
+
+- **2026-10-13:** Se analizó la especificación técnica y se identificó que la sección de observabilidad requiere instrumentación OpenTelemetry en las APIs, métricas en Prometheus y visualización en Grafana/Aspire. El usuario eligió Prometheus + Grafana para el dashboard.
+- **2026-10-13:** Se preparó una primera configuración local con Docker Compose: OpenTelemetry Collector recibe métricas OTLP en 4317/4318, Prometheus las recopila y Grafana carga un dashboard inicial. Se añadió la guía de inicio a `README.md`. Se validaron YAML, JSON y formato del diff; Docker no estaba disponible, así que no se pudo iniciar ni verificar los contenedores. Próximo paso sugerido: instrumentar un servicio de ejemplo en C++ con contador de solicitudes y medición de latencia, explicando cada parte al usuario.
+- **2026-10-13:** El usuario pidió registrar en esta sección anotaciones de las respuestas y conversaciones para mantener el historial del trabajo.
