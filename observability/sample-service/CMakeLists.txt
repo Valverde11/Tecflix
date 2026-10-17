@@ -1,3 +1,2 @@
 add_executable(sample-service src/main.cpp)
-target_link_libraries(sample-service PRIVATE
-  opentelemetry_metrics opentelemetry_resources opentelemetry_exporter_otlp_http_metric)
+target_link_libraries(sample-service PRIVATE tecflix_telemetry)
