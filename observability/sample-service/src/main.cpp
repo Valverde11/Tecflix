@@ -6,6 +6,7 @@
 #include <memory>
 #include <thread>
 #include <utility>
+#include "tecflix/telemetry/config.hpp"
 
 #include "opentelemetry/common/attribute_value.h"
 #include "opentelemetry/context/context.h"
@@ -64,10 +65,11 @@ private:
     opentelemetry::nostd::shared_ptr<metrics_api::Histogram<double>> request_duration_;
 };
 
-std::shared_ptr<metrics_sdk::MeterProvider> StartMetrics()
+std::shared_ptr<metrics_sdk::MeterProvider> StartMetrics(
+    const tecflix::telemetry::Config& config)
 {
     otlp::OtlpHttpMetricExporterOptions exporter_options;
-    exporter_options.url = "http://localhost:4318/v1/metrics";
+    exporter_options.url = tecflix::telemetry::MetricsURL(config);
 
     auto exporter = otlp::OtlpHttpMetricExporterFactory::Create(exporter_options);
 
@@ -77,8 +79,10 @@ std::shared_ptr<metrics_sdk::MeterProvider> StartMetrics()
     auto reader = metrics_sdk::PeriodicExportingMetricReaderFactory::Create(
         std::move(exporter), reader_options);
 
-    auto resource = opentelemetry::sdk::resource::Resource::Create(
-        {{"service.name", "tecflix-cpp-demo"}});
+    auto resource = opentelemetry::sdk::resource::Resource::Create({
+        {"service.name", config.service_name.c_str()},
+        {"service.instance.id", config.instance_id.c_str()},    // .c_str() convierte el texto de C++ al formato que espera OpenTelemetry
+        });
     auto views = std::make_unique<metrics_sdk::ViewRegistry>();
 
     auto histogram_config = std::make_shared<metrics_sdk::HistogramAggregationConfig>();
@@ -105,10 +109,13 @@ std::shared_ptr<metrics_sdk::MeterProvider> StartMetrics()
 
 int main()
 {
-    auto meter_provider = StartMetrics();
+    const auto config = tecflix::telemetry::ConfigFromEnv("tecflix-cpp-demo");
+    auto meter_provider = StartMetrics(config);
     RequestMetrics metrics(meter_provider);
 
-    std::cout << "Generando 40 solicitudes HTTP simuladas; exportando a localhost:4318.\n";
+    std::cout << "Servicio: " << config.service_name 
+            << " | instancia: " << config.instance_id
+            << " | Collector: " << config.otlp_endpoint << "\n";
 
     for (std::int64_t request = 1; request <= 40; ++request)
     {
