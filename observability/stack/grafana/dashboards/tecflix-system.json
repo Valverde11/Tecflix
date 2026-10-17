@@ -196,7 +196,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))",
+          "expr": "sum by (service_name) (rate(tecflix_http_server_requests_total[5m]))",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
