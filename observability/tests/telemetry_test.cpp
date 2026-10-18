@@ -1,9 +1,3 @@
-// El compilador de Microsoft (MSVC) suele mostrar una advertencia (C4996) 
-// diciendo que getenv es “insegura”. Es solo un aviso, no un error, y el 
-// código compila. Solo se vuelve problema si el CI del equipo trata las 
-// advertencias como errores. Si pasa, se silencia en CMake con 
-// target_compile_definitions(tecflix_telemetry PRIVATE _CRT_SECURE_NO_WARNINGS).
-
 #include <gtest/gtest.h> 
 
 #include <cstdlib>
@@ -12,52 +6,22 @@
 
 #include "tecflix/telemetry/config.hpp"
 #include "tecflix/telemetry/telemetry.hpp"
+#include "scoped_env.hpp"
 
 using namespace tecflix::telemetry;
-
-namespace {
-
-    #ifdef _WIND32
-    #include <stdlib.h>
-    void SetEnv(const char* name, const char* value) { _putenv_s(name, value); }
-    void UnsetEnv(const char* name) { _putenv_s(name, ""); }    // en Windows, valor vacío = borrar
-    #else
-    void SetEnv(const char* name, const char* value) { setenv(name, value, 1); }
-    void UnsetEnv(const char* name) { unsetenv(name); }
-    #endif
-    // Fija una variable de entorno mientras vive el objeto y la restaura al salir (RAII)
-    // Sin esto, una prueba dejaría "basura" que contaminaría a las demás
-    class ScopedEnv {
-        public:
-            ScopedEnv(const char* name, const char* value) : name_(name) {
-                if (const char* old = std::getenv(name)) old_ = old;
-                if (value) SetEnv(name, value);
-                else UnsetEnv(name);
-            }
-            ~ScopedEnv() {
-                if (old_) SetEnv(name_, old_->c_str());
-                else UnsetEnv(name_);
-            }
-            ScopedEnv(const ScopedEnv&) = delete;
-            ScopedEnv& operator=(const ScopedEnv&) = delete;
-
-        private:
-            const char* name_;
-            std::optional<std::string> old_;
-    };
-}   // namespace
 
 // Cada TEST es una prueba
 // EXPECT_EQ falla y dice los dos valores si no coinciden
 
 TEST(ConfigFromEnv, UsesDefaultWhenVariablesAreNotDefined) {
     ScopedEnv a("OTEL_SERVICE_NAME", nullptr);
-    ScopedEnv b("SERVICE_INSTANE_ID", nullptr);
+    ScopedEnv b("SERVICE_INSTANCE_ID", nullptr);
     ScopedEnv c("OTEL_EXPORTER_OTLP_ENDPOINT", nullptr);
 
     const Config config = ConfigFromEnv("mi-servicio");
 
     EXPECT_EQ(config.service_name, "mi-servicio");
+    EXPECT_EQ(config.instance_id, "instance-1");
     EXPECT_EQ(config.otlp_endpoint, "http://localhost:4318");
 }
 
