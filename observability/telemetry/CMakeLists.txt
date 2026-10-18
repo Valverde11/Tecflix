@@ -21,3 +21,8 @@ else()
 endif()
 
 target_include_directories(tecflix_telemetry PUBLIC include)
+option(TECFLIX_COVERAGE "Instrumentar para cobertura (clang)" OFF)
+if(TECFLIX_COVERAGE)
+  target_compile_options(tecflix_telemetry PUBLIC -fprofile-instr-generate -fcoverage-mapping)
+  target_link_options(tecflix_telemetry PUBLIC -fprofile-instr-generate)
+endif()
