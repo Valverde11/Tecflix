@@ -8,8 +8,14 @@ FetchContent_Declare(opentelemetry_cpp
 FetchContent_MakeAvailable(opentelemetry_cpp)
 set(BUILD_TESTING "${_prev}" CACHE BOOL "" FORCE)
 
-add_library(tecflix_telemetry STATIC src/config.cpp
-  src/telemetry.cpp)
+option(TECFLIX_ENABLE_TELEMETRY "Enviar métricas con OpenTelemetry" ON)
+
+if(TECFLIX_ENABLE_TELEMETRY)
+
+  add_library(tecflix_telemetry STATIC src/config.cpp src/telemetry.cpp)
+  target_link_libraries(tecflix_telemetry PUBLIC
+    opentelemetry_metrics opentelemetry_resources opentelemetry_exporter_otlp_http_metric)
+else()
+  add_library(tecflix_telemetry STATIC src/config.cpp src/telemetry_noop.cpp)
+endif()
 target_include_directories(tecflix_telemetry PUBLIC include)
-target_link_libraries(tecflix_telemetry PUBLIC
-  opentelemetry_metrics opentelemetry_resources opentelemetry_exporter_otlp_http_metric)
