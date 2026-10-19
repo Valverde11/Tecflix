@@ -55,7 +55,7 @@ namespace tecflix::telemetry {
                         attributes = {
                             {"http.request.method", nostd::string_view(method.data(), method.size())},
                             {"http.route", nostd::string_view(route.data(), route.size())},
-                            {"http.response.status.code", static_cast<std::int64_t>(status_code)},
+                            {"http.response.status_code", static_cast<std::int64_t>(status_code)},
                         };
                         request_count_->Add(1, attributes);
                         request_duration_->Record(duration_seconds, attributes, opentelemetry::context::Context{});
