@@ -8,3 +8,5 @@
 
 
 # Agent memory
+- El API usa HLS (manifiesto M3U8 y segmentos MPEG-TS); es el formato de salida elegido para entregar video por bloques.
+- La subida es `application/octet-stream` y se transcodifica en segundo plano con FFmpeg; al no estar definidos autenticación ni base de datos, los trabajos se mantienen en memoria y los archivos en almacenamiento local.
