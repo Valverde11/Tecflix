@@ -3,15 +3,14 @@
     "configurations": [
         {
             "name": "Tecflix API",
-            "type": "cppdbg",
+            "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/tecflix-api",
+            "program": "${workspaceFolder}/build/Debug/tecflix-api.exe",
             "cwd": "${workspaceFolder}",
             "environment": [
                 { "name": "TECFLIX_PORT", "value": "8083" },
                 { "name": "TECFLIX_STORAGE", "value": "${workspaceFolder}/data" }
-            ],
-            "MIMode": "gdb"
+            ]
         }
     ]
 }
