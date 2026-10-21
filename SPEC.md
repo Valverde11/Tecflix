@@ -10,3 +10,6 @@
 # Agent memory
 - El API usa HLS (manifiesto M3U8 y segmentos MPEG-TS); es el formato de salida elegido para entregar video por bloques.
 - La subida es `application/octet-stream` y se transcodifica en segundo plano con FFmpeg; al no estar definidos autenticación ni base de datos, los trabajos se mantienen en memoria y los archivos en almacenamiento local.
+- `TECFLIX_FFMPEG` permite indicar la ruta de FFmpeg cuando no está disponible en el `PATH`.
+- El código del API se divide entre `include/tecflix`, `src` y `CMakeLists.txt`; los artefactos locales de build y video se excluyen del control de versiones.
+- Se utiliza la cabecera cpp-httplib 0.62.0 ya instalada en `third_party/cpp-httplib`, sin descargar una segunda versión durante el build.

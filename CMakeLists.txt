@@ -1,17 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 project(tecflix_api LANGUAGES CXX)
 
-include(FetchContent)
 find_package(Threads REQUIRED)
 
-FetchContent_Declare(
-    cpp_httplib
-    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.18.3.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+add_library(cpp-httplib INTERFACE)
+target_include_directories(cpp-httplib SYSTEM INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cpp-httplib
 )
-FetchContent_MakeAvailable(cpp_httplib)
+add_library(httplib::httplib ALIAS cpp-httplib)
 
-add_executable(tecflix-api src/main.cpp)
+add_executable(tecflix-api
+    src/main.cpp
+    src/VideoService.cpp
+    src/FfmpegTranscoder.cpp
+)
+target_include_directories(tecflix-api PRIVATE include)
 target_compile_features(tecflix-api PRIVATE cxx_std_17)
 target_link_libraries(tecflix-api PRIVATE httplib::httplib Threads::Threads)
 
