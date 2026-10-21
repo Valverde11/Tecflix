@@ -14,7 +14,6 @@ Algoritmos y Estructuras de Datos II (CE 2103), TEC, II Semestre 2026. Proyecto 
 ## Mi parte
 1. **Aplicación web** — ReactJS + TypeScript.
 2. **API de usuarios** — REST API en C++.
-- Carpetas: `web/` y `users-api/` (confirmar con el equipo).
 
 ## Fuera de mi alcance
 - API de metadata (C++ + MongoDB) → otro integrante.
