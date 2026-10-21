@@ -1,5 +1,7 @@
 # AGENTS.md — Tecflix
 Sistema de streaming de video para el curso CE 2103 (TEC). Este agente trabaja solo en la **Aplicación web** y la **API de usuarios** de la V1.0. Objetivo: código funcional, integrado y que yo pueda explicar en la defensa.
+**Siempre debes de explicarme en un archivo nuevo que vas a generar y actualizar llamado código que hace esa parte de código que generes y además agregar una explicación en prosa para entender que estamos haciendo**
+
 
 ## Stack y estructura
 - `web/` → ReactJS + TypeScript. Reproductor: Shaka Player o Dash.js (por decidir).
