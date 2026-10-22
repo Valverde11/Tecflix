@@ -6,8 +6,8 @@
 
 namespace tecflix::telemetry {
 
-    // Lo único que elresto del equipo necesita saber: anotar una solicitud.
-    class HttpMetrics {     // clase abstracte, (= 0): es un contrato y puede tner varias implementaciones
+    // Lo único que el resto del equipo necesita saber: anotar una solicitud.
+    class HttpMetrics {     // clase abstract, (= 0): es un contrato y puede tener varias implementaciones
         public:
             virtual ~HttpMetrics() = default;
             virtual void Record(const std::string& method, const std::string & route,
@@ -35,4 +35,4 @@ namespace tecflix::telemetry {
             struct Impl;
             std::unique_ptr<Impl> impl_;
     };
-}   // namespace tecflix:telemetry
+}   // namespace tecflix::telemetry

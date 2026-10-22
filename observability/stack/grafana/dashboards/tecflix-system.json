@@ -21,7 +21,7 @@
   "timezone": "browser",
   "title": "Tecflix - System Overview",
   "uid": "tecflix-system",
-  "version": 2,
+  "version": 3,
   "weekStart": "",
   "panels": [
     {
@@ -233,7 +233,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(sum(rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\",http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval]))",
+          "expr": "((sum(rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\",http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval]))) >= 0",
           "legendFormat": "Tasa de errores 5xx",
           "refId": "A"
         }
@@ -299,7 +299,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval]))) > 0",
           "legendFormat": "Latencia p95",
           "refId": "A"
         }
@@ -616,7 +616,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, service_name, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__range]))) > 0",
           "legendFormat": "",
           "refId": "A",
           "instant": true,

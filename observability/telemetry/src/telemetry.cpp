@@ -34,7 +34,7 @@ namespace tecflix::telemetry {
         namespace nostd = opentelemetry::nostd;
         namespace otlp = opentelemetry::exporter::otlp;
 
-        // Una sola fuente de verdad: elmedidor y la "vista" de los buckets DEBEN usar el mismo nombre.
+        // Una sola fuente de verdad: el medidor y la "vista" de los buckets DEBEN usar el mismo nombre.
         constexpr const char* kMeterName = "tecflix.telemetry";
         constexpr const char* kMeterVersion = "1.0.0";
         constexpr const char* kDurationName = "http.server.request.duration";

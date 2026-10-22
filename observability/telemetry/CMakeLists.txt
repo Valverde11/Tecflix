@@ -11,8 +11,6 @@ if(TECFLIX_ENABLE_TELEMETRY)
   FetchContent_MakeAvailable(opentelemetry_cpp)
   set(BUILD_TESTING "${_prev}" CACHE BOOL "" FORCE)
 
-
-
   add_library(tecflix_telemetry STATIC src/config.cpp src/telemetry.cpp)
   target_link_libraries(tecflix_telemetry PUBLIC
     opentelemetry_metrics opentelemetry_resources opentelemetry_exporter_otlp_http_metric)
@@ -25,4 +23,9 @@ option(TECFLIX_COVERAGE "Instrumentar para cobertura (clang)" OFF)
 if(TECFLIX_COVERAGE)
   target_compile_options(tecflix_telemetry PUBLIC -fprofile-instr-generate -fcoverage-mapping)
   target_link_options(tecflix_telemetry PUBLIC -fprofile-instr-generate)
+endif()
+
+if(TARGET httplib::httplib)
+add_library(tecflix_telemetry_httplib INTERFACE)
+target_link_libraries(tecflix_telemetry_httplib INTERFACE tecflix_telemetry httplib::httplib)
 endif()
