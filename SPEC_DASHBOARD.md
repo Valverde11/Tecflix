@@ -1,92 +1,224 @@
-# Especificación Técnica del Proyecto: Tecflix (Spec-Driven Development)
+# SPEC_DASHBOARD.md — Dashboard del sistema (observabilidad)
 
-## 1. Visión General
-Tecflix es un sistema distribuido de streaming de video diseñado para la plataforma web, compuesto por un frontend reactivo, múltiples servicios backend en C++ organizados en microservicios/APIs, almacenamiento estructurado y binario, observabilidad completa y mecanismos de alta disponibilidad[cite: 1, 2, 3].
+Este archivo complementa a `SPEC.md` y cubre **solo** el módulo `observability/`. Si algo contradice a `SPEC.md`, manda `SPEC.md`. Antes de trabajar en este módulo, un agente lee `SPEC.md` (sección "Agent memory" incluida) y este archivo.
 
----
+**Responsable:** la persona del equipo que desarrolla el dashboard. **Última revisión:** 2026-10-21.
 
-## 2. Stack Tecnológico General
-- **Frontend Web:** ReactJS 18+ con TypeScript.
-- **Reproducción de Video:** Reproductor open-source (Shaka Player o Dash.js) compatible con protocolos MPEG-DASH / HLS[cite: 2].
-- **Backend APIs:** C++ (C++17/C++20) para API de Usuarios, API de Metadata y API de Streaming[cite: 2].
-- **Base de Datos y Almacenamiento:** 
-  - Archivos binarios estructurados en disco con **Árbol B** indexado para el API de Usuarios[cite: 2].
-  - **MongoDB** para el API de Metadata[cite: 2].
-  - Sistema de archivos local / Red distribuida para bloques transcodificados de video[cite: 2].
-- **Procesamiento de Video:** FFMPEG (transcodificación de formatos y fragmentación)[cite: 2].
-- **Observabilidad:** OpenTelemetry (Traces y Métricas) integrado con Prometheus / Grafana / Aspire[cite: 3].
-- **Pruebas y CI/CD:** GitHub Actions (Pipelines), pruebas unitarias C++ (GoogleTest / Catch2) y React (Vitest / Jest), Pruebas Funcionales E2E con Playwright[cite: 3].
-- **Pruebas de Carga:** k6 / Locust / Apache JMeter[cite: 3].
+## 1. Alcance
 
----
+Entregar lo que pide `SPEC.md` §3.5 y valen 10 puntos de la rúbrica, y además la base de evidencia para la versión 2.0 (optimizaciones, pruebas de carga y paper):
 
-## 3. Arquitectura del Sistema y Componentes
+1. Una **librería C++ reutilizable** (`tecflix_telemetry`) que las tres APIs usan para emitir métricas y traces.
+2. Un **stack local** (OpenTelemetry Collector, Prometheus, Grafana) levantado con Docker Compose.
+3. Un **dashboard** que muestre errores, salud, desempeño por componente y estadísticas generales.
+4. Pruebas unitarias del módulo (≥ 90 % de cobertura) y su integración en CI.
 
-### 3.1. Aplicación Web (ReactJS + TypeScript)
-- **Ruta/Ubicación:** `/frontend`
-- **Requerimientos Funcionales:**
-  - **Autenticación y Registro:** Formularios de Login y Registro integrados con el API de Usuarios[cite: 2].
-  - **Catálogo y Paginación:** Visualización de videos propios y públicos ordenables por título, autor y fecha de carga[cite: 2]. La ordenación y paginación se realiza delegando la consulta al API de Metadata[cite: 2].
-  - **Gestión de Videos:** Subida de videos, modificación de metadata, eliminación y alternancia de visibilidad (Público/Privado)[cite: 1, 2].
-  - **Cuotas de Almacenamiento:** Control estricto del límite asignado por usuario. Bloquear la subida cuando la cuota sea superada[cite: 2].
-  - **Reproductor:** Integración de Shaka Player / Dash.js para streaming adaptativo[cite: 2].
+Fuera de alcance: la lógica de negocio de las APIs y la aplicación web. El módulo es **independiente** del código de los demás integrantes; la integración ocurre a través de la librería y del contrato de `SPEC.md` §4.
 
-### 3.2. API de Usuarios (C++)
-- **Ruta/Ubicación:** `/services/user-service`
-- **Interfaz:** REST API en C++ (usando Crow, Pistache o HTTPLib)[cite: 2].
-- **Requerimientos Funcionales:**
-  - Gestión CRUD completa de usuarios (Registrar, Consultar, Actualizar, Eliminar)[cite: 2].
-  - Persistence Engine: Guardado directo en **archivo binario** personalizado[cite: 2].
-  - Indexación: Implementación nativa de un **Árbol B en disco** para optimización de búsquedas[cite: 2].
+## 2. Arquitectura
 
-### 3.3. API de Metadata (C++)
-- **Ruta/Ubicación:** `/services/metadata-service`
-- **Interfaz:** REST API en C++[cite: 2].
-- **Requerimientos Funcionales:**
-  - Gestión de metadatos de videos: autor, duración, fecha de carga, título, tema, etiquetas y estado de visibilidad[cite: 1, 2].
-  - Integración directa con MongoDB usando `mongocxx` driver[cite: 2].
-  - Endpoints para listado con soporte de ordenación (título, autor, fecha) y paginación[cite: 2].
+```
+API C++ ──(OTLP/HTTP, empuja)──► OpenTelemetry Collector ──(expone métricas)──► Prometheus ◄──(PromQL)── Grafana
+ (librería tecflix_telemetry)         :4317 gRPC · :4318 HTTP       :9464           :9090                     :3000
+```
 
-### 3.4. API de Streaming (C++)
-- **Ruta/Ubicación:** `/services/streaming-service`
-- **Interfaz:** REST API en C++[cite: 2].
-- **Requerimientos Funcionales:**
-  - Transcodificación de videos en background al momento de la carga mediante **FFMPEG** (conversión a segmentos HLS/DASH)[cite: 2].
-  - Servicio de entrega de bloques/chunks de video hacia el reproductor web de manera eficiente[cite: 2].
+- Las APIs **empujan** métricas por OTLP/HTTP al Collector; Prometheus las **jala** del Collector cada 15 s; Grafana consulta Prometheus.
+- Consecuencia importante: Prometheus solo ve al Collector, **no** a las APIs. Una API caída simplemente deja de enviar datos (ver §9, salud).
 
-### 3.5. Dashboard y Observabilidad
-- **Instrumentación:** OpenTelemetry C++ SDK en las 3 APIs y OpenTelemetry JS en el Frontend[cite: 3].
-- **Métricas:** Latencia de endpoints, tasa de errores (HTTP 5xx/4xx), uso de CPU/memoria y throughput de streaming[cite: 3].
-- **Visualización:** Configuración de Prometheus + Grafana o Aspire para consumo e interpretación de métricas y traces[cite: 3].
+## 3. Estructura del módulo
 
----
+```
+observability/
+├── CMakeLists.txt           # proyecto propio; incluye pruebas (GoogleTest) y httplib
+├── CMakePresets.json        # preset "windows" (Visual Studio 2022 + vcpkg)
+├── vcpkg.json               # dependencias para Windows: protobuf, curl
+├── telemetry/               # librería tecflix_telemetry
+│   ├── CMakeLists.txt
+│   ├── include/tecflix/telemetry/{config.hpp, telemetry.hpp}
+│   └── src/{config.cpp, telemetry.cpp, telemetry_noop.cpp}
+├── sample-service/          # API de juguete para generar tráfico (src/main.cpp)
+├── tests/                   # telemetry_test.cpp, telemetry_export_test.cpp, scoped_env.hpp
+└── stack/                   # docker-compose.yml, otel-collector.yaml, prometheus.yaml, grafana/
+```
 
-## 4. Requerimientos de Arquitectura V2.0 (Alta Disponibilidad y Calidad)
+## 4. Stack local (Docker)
 
-### 4.1. Eliminación de Single Point of Failure (SPOF)
-- Mapeo y ejecución en al menos 2 instancias independientes/separadas para cada API (Usuarios, Metadata, Streaming)[cite: 3].
-- Implementación de balanceador de carga (Nginx / HAProxy / Traefik) frente a los servicios[cite: 3].
+| Servicio | Imagen (versión fija) | Puerto en tu máquina |
+|---|---|---|
+| OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.120.0` | 4317 (gRPC), 4318 (HTTP) |
+| Prometheus | `prom/prometheus:v3.2.1` | 9090 |
+| Grafana | `grafana/grafana:11.5.2` | 3000 (usuario inicial `admin`/`admin`: cambiarlo) |
 
-### 4.2. Optimización de Performance
-- Identificación y resolución de al menos 5 cuellos de botella basados en las métricas de la V1.0 (ej. caching de metadata, hilos de FFMPEG, optimización de B-Tree)[cite: 3].
+- Los puertos se publican solo en `127.0.0.1`. **Para la versión 2.0, con APIs en otra máquina, hay que abrirlos** (ver §12).
+- Prometheus tiene dos targets: `otel-collector` (métricas propias del Collector) y `otel-metrics` (el exportador del Collector en `otel-collector:9464`). Intervalo de recolección: 15 s.
+- El Collector convierte los atributos del recurso (`service.name`, `service.instance.id`) en etiquetas de Prometheus. Hoy solo tiene un pipeline de **métricas**.
+- Grafana se aprovisiona desde archivos: datasource con uid `prometheus` y dashboard `tecflix-system` (carpeta Tecflix, archivo `grafana/dashboards/tecflix-system.json`, montado de solo lectura). Los cambios se hacen en el archivo, no en la interfaz.
+- Comandos (desde `observability/stack/`): `docker compose up -d`, `docker compose ps`, `docker compose down` (conserva datos), `docker compose down -v` (borra datos).
 
-### 4.3. Pruebas de Carga y Estrés
-- Scripts de carga simulando usuarios concurrentes para medir capacidad límite de 1 servidor vs. 2 servidores con balanceador[cite: 3].
+## 5. Librería `tecflix_telemetry`
 
-### 4.4. CI/CD y Pruebas
-- **GitHub Workflows:** Pipeline de compilación y empaquetado automático de ejecutables C++ y cliente React[cite: 3].
-- **Cobertura:** Mínimo **90% de cobertura de código** mediante pruebas unitarias en todos los componentes[cite: 3].
-- **Pruebas Funcionales:** Pruebas E2E automatizadas usando **Playwright** totalmente integradas en GitHub Actions[cite: 3].
+### 5.1 Interfaz pública (namespace `tecflix::telemetry`)
 
----
+- `Config { service_name, instance_id, otlp_endpoint }` y `ConfigFromEnv(default_service_name)`.
+- `MetricsURL(config)`: quita las barras finales del endpoint y agrega `/v1/metrics`.
+- `HttpMetrics` (clase abstracta): `Record(method, route, status_code, duration_seconds)`.
+- `NoOpHttpMetrics`: versión muda, para pruebas unitarias de otros componentes sin Collector.
+- `Telemetry(const Config&)`: crea el proveedor de métricas; `Http()` devuelve el `HttpMetrics` real; `ForceFlush()` devuelve `true` si todo se envió. No es copiable. El destructor apaga el exportador. Usa el patrón *pimpl*, así los encabezados no arrastran OpenTelemetry.
 
-## 5. Criterios de Aceptación para Agentes de IA
-1. Todo código C++ debe estar estructurado bajo principios del paradigma orientado a objetos (OOP) y buenas prácticas de memoria[cite: 1, 5].
-2. Los componentes del frontend deben estar fuertemente tipados con Interfaces de TypeScript sin usar `any`.
-3. Todos los endpoints REST deben cumplir con respuestas en formato JSON estandarizado y códigos de estado HTTP apropiados.
-4. El pipeline en GitHub Actions debe ejecutarse sin errores antes de consolidar ramas o crear tags para V1.0 y V2.0[cite: 3, 4].
+### 5.2 Configuración (variables de entorno)
 
-## 6. Agent Memory
+| Variable | Valor por defecto |
+|---|---|
+| `OTEL_SERVICE_NAME` | el nombre que pasa el código a `ConfigFromEnv` |
+| `SERVICE_INSTANCE_ID` | `instance-1` (ver riesgo en §11) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` |
+
+Una variable vacía se trata igual que una no definida. El SDK envía por defecto protobuf binario; con `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=http/json` envía JSON (lo usa la prueba de exportación).
+
+### 5.3 Métricas que emite
+
+- Histograma `http.server.request.duration`, unidad segundos, **límites de los buckets**: 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.3, 0.5, 1.0.
+- Atributos: `http.request.method`, `http.route`, `http.response.status_code`. Recurso: `service.name`, `service.instance.id`.
+- Contador `tecflix.http.server.requests` (redundante: el `_count` del histograma ya cuenta solicitudes; el dashboard no lo usa).
+- Nombres en Prometheus: `http_server_request_duration_seconds_{bucket,count,sum}` con etiquetas `service_name`, `service_instance_id`, `http_route`, `http_request_method`, `http_response_status_code` (además de `job`, `instance`, `exported_job`, `exported_instance`, `telemetry_sdk_*`). **Agrupar siempre por `service_instance_id`**, no por `instance` (que es el Collector).
+- Intervalo de exportación: 1 s, tiempo límite 0.5 s.
+
+### 5.4 Reglas de diseño (no romper)
+
+- El nombre del medidor (`tecflix.telemetry`, versión `1.0.0`) y el de la "vista" que define los buckets **deben coincidir**. Si divergen, los buckets vuelven a los predeterminados del SDK (0, 5, 10, 25…) **sin error**, y el p95 sale absurdo (se midió 4.75 s para solicitudes de 30–115 ms). Hay una prueba que lo protege.
+- La ruta se registra con su patrón (`/videos/:id`), nunca con la URL real (explosión de cardinalidad).
+- `Record` se espera seguro entre hilos (diseño de los instrumentos síncronos del SDK); verificar con carga real en modo ON.
+- La librería no depende de ninguna biblioteca HTTP: el envoltorio que mide cada manejador (`Instrument`) vive en el servicio.
+
+### 5.5 Opciones de CMake
+
+| Opción | Por defecto | Efecto |
+|---|---|---|
+| `TECFLIX_ENABLE_TELEMETRY` | `ON` | `OFF` compila `telemetry_noop.cpp` (sin OpenTelemetry): rápido, sin Protobuf ni curl |
+| `TECFLIX_COVERAGE` | `OFF` | Instrumenta con las banderas de cobertura de clang (macOS) |
+
+Dependencia: OpenTelemetry C++ **v1.20.0** (`FetchContent`). Su exportador OTLP/HTTP necesita Protobuf, libcurl, nlohmann-json y zlib. En macOS: `brew install protobuf`. En Windows: vcpkg (ver §10). El `CMakeLists.txt` de la librería guarda y restaura `BUILD_TESTING` alrededor de la descarga, para no desactivar las pruebas del resto del proyecto.
+
+## 6. Servicio de ejemplo (`sample-service`)
+
+Servidor HTTP con `cpp-httplib` v0.18.3 que genera tráfico realista:
+
+- `GET /health` → `200 {"status":"ok"}`.
+- `GET /videos/:id` → tarda 20–200 ms al azar y falla con `500` cerca del 10 % de las veces.
+- Variable `PORT` (por defecto 8090). Se detiene limpio con Ctrl+C: envía las últimas métricas y termina.
+- Es el banco de pruebas del dashboard; no es una API de negocio.
+
+## 7. Dashboard de Grafana (`tecflix-system`, versión 2)
+
+Variables: **Servicio** e **Instancia** (múltiples, con "All"). Todas las consultas filtran por ellas y usan `$__rate_interval`.
+
+| Panel | Qué muestra |
+|---|---|
+| Collector / exportador `UP` | Prometheus ve al Collector y a su exportador |
+| Tasa de errores 5xx | % de respuestas 5xx (verde < 1 %, naranja ≤ 5 %, rojo > 5 %) |
+| Latencia p95 | p95 global (verde < 0.2 s, naranja ≤ 0.5 s, rojo > 0.5 s) |
+| Solicitudes por segundo por instancia | Tráfico de cada servicio e instancia |
+| Latencia p95 por servicio y ruta | Qué ruta es lenta |
+| Tasa de errores 5xx por servicio | Un servicio sin errores aparece en 0 %, no desaparece |
+| Solicitudes por código de estado | Mezcla de 200, 404, 500... apilada |
+| Promedio vs p95 vs p99 | Muestra por qué el promedio engaña |
+| Rutas ordenadas por p95 | Tabla para decidir qué optimizar primero |
+
+Convenciones PromQL: `sum(rate(...)) or vector(0)` para que "sin errores" sea 0 y no "sin datos"; `or 0 * sum by (...)(...)` para conservar series con valor cero; el p95 es una **estimación** calculada dentro del bucket (p. ej. con 32 solicitudes ≤ 100 ms de 40 y 40 ≤ 125 ms: 0.1 + 0.025 × (38 − 32)/(40 − 32) = 118.75 ms).
+
+**Validación:** las 12 consultas se verificaron con `promtool` 3.2.1 (sintaxis) y 6 de ellas con datos sintéticos de resultado conocido. La disposición visual y los filtros deben confirmarse en un Grafana real.
+
+## 8. Pruebas y cobertura
+
+- `telemetry_test.cpp` (8 pruebas: configuración, URL, versión muda, construcción de `Telemetry`) y `telemetry_export_test.cpp` (1 prueba: un Collector falso con `cpp-httplib` recibe el envío real y se comprueba que contiene la ruta, la instancia, el nombre de la métrica y un límite de los buckets). `scoped_env.hpp` fija y restaura variables de entorno entre pruebas (compatible con Windows).
+- Resultado medido (macOS, clang, `TECFLIX_ENABLE_TELEMETRY=ON`): 9/9 pruebas; **100 % de funciones, líneas y ramas** (config.cpp, telemetry.cpp, telemetry.hpp). En Linux con GCC (`OFF`, `-Wall -Wextra`): compila sin advertencias y pasan las 8 pruebas.
+- El 100 % mide que el código **se ejecutó**, no que esté bien: dos pruebas solo comprueban que no fallen. Y no cubre `sample-service`.
+
+Comandos (desde la raíz del repositorio; macOS):
+
+```sh
+cmake -S observability -B observability/build/cov-on \
+  -DTECFLIX_ENABLE_TELEMETRY=ON -DTECFLIX_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build observability/build/cov-on -j8
+find observability/build/cov-on -name '*.profraw' -delete
+LLVM_PROFILE_FILE="$PWD/observability/build/cov-on/cov-%p.profraw" ctest --test-dir observability/build/cov-on
+xcrun llvm-profdata merge -sparse observability/build/cov-on/cov-*.profraw -o observability/build/cov-on/telemetry.profdata
+xcrun llvm-cov report ./observability/build/cov-on/telemetry_test -object ./observability/build/cov-on/telemetry_export_test \
+  -instr-profile=observability/build/cov-on/telemetry.profdata -ignore-filename-regex='_deps|/tests/|/usr/|Developer'
+```
+
+Pruebas rápidas sin OpenTelemetry: `cmake -S observability -B observability/build/off -DTECFLIX_ENABLE_TELEMETRY=OFF` y luego compilar y `ctest`.
+
+## 9. Estado frente a los requisitos
+
+| Requisito (`SPEC.md`) | Estado |
+|---|---|
+| Métricas con OpenTelemetry en el dashboard | **Hecho** para métricas HTTP (latencia, errores, tráfico) |
+| **Traces** | **Pendiente** (no hay SDK de trazas ni pipeline en el Collector) |
+| Salud de cada componente | **Parcial**: `UP` mide el Collector, no las APIs; falta señal de vida (ver §12) |
+| CPU y memoria, throughput de streaming | **Pendiente** |
+| Integración con las APIs reales | **Pendiente**: ninguna API usa aún la librería |
+| Pruebas unitarias ≥ 90 % | **Hecho** para el módulo (medido en macOS) |
+| CI en GitHub Actions | **Pendiente** (no existe `.github/workflows`) |
+| Compilar en Windows | **Sin probar** (preset y `vcpkg.json` creados; ejecutar `cmake --preset windows` dentro de `observability/`) |
+| Instancias duplicadas (V2.0) | **Parcial**: el dashboard ya filtra por instancia; falta la instancia por defecto y el Collector redundante |
+
+## 10. Plataformas
+
+- **macOS (Apple Silicon):** desarrollo y cobertura; requiere `brew install protobuf`.
+- **Linux (GCC 13):** compila y pasa pruebas en modo `OFF`; el modo `ON` requiere instalar Protobuf y curl en el CI (por ejemplo `libprotobuf-dev protobuf-compiler libcurl4-openssl-dev`).
+- **Windows (MSVC):** 3 de 4 integrantes lo usan. Ruta prevista: `vcpkg` aporta Protobuf y curl, `FetchContent` sigue trayendo OpenTelemetry v1.20.0 (misma versión en todos). No mezclar un Protobuf instalado en el sistema con el de vcpkg. La primera compilación tarda bastante. Hasta que el equipo lo pruebe, desarrollar con `TECFLIX_ENABLE_TELEMETRY=OFF`.
+- La versión de OpenTelemetry está fija en v1.20.0: la API cambia entre versiones (el paquete actual de vcpkg es más nuevo), por eso no se usa el paquete de vcpkg.
+
+## 11. Riesgos y limitaciones conocidas
+
+- Una API sin tráfico y una API caída se ven igual (no hay señal de vida).
+- `SERVICE_INSTANCE_ID` por defecto es `instance-1`: dos máquinas sin la variable mezclan sus datos.
+- El Collector es único: es un punto único de falla de la observabilidad en la versión 2.0.
+- `/health` también se mide; si algo lo consulta con frecuencia aparecerá como una ruta más.
+- El histograma llega hasta 1 s: un p99 real mayor se ve como 1 s. Ajustar los buckets si las rutas de streaming son más lentas.
+- Contraseña inicial de Grafana (`admin`/`admin`) y puertos sin autenticación: aceptable solo en local.
+
+## 12. Hoja de ruta para terminar el módulo
+
+1. **Integrar una API real** con el contrato de `SPEC.md` §4 (la primera que exista) y documentar los pasos en `observability/docs/integracion.md`; verificar cómo el CMake raíz incluye `observability/telemetry`.
+2. **Salud y recursos:** métricas observables de señal de vida (uptime), memoria y CPU del proceso, con una interfaz propia y una implementación por sistema operativo (macOS, Linux, Windows) y pruebas con una versión falsa; paneles "componentes vivos", memoria y CPU.
+3. **Instancia por defecto** = nombre del equipo (hostname).
+4. **Traces:** elegir backend con el equipo, agregar el SDK de trazas y un pipeline en el Collector; un span por solicitud en el envoltorio de las APIs.
+5. **Métricas de streaming** (bytes entregados, transcodificaciones, duración) cuando exista la API de streaming.
+6. **CI:** workflow en GitHub Actions con compilación, pruebas y cobertura con umbral de 90 %; decidir el trabajo de Windows.
+7. **Versión 2.0:** abrir los puertos del Collector para APIs en otra máquina, evaluar un segundo Collector, parametrizar el stack por entorno.
+8. **Pruebas de carga** con k6 sobre las APIs, usando este dashboard como evidencia (capturas antes y después de cada optimización) para el paper.
+9. **Limpieza:** actualizar `observability/README.md`, corregir errores de escritura en comentarios, decidir si se elimina el contador redundante.
+
+## 13. Cómo ejecutar el módulo (resumen)
+
+```sh
+cd observability/stack && docker compose up -d && cd ../..                     # 1. stack
+cmake -S observability -B observability/build                                  # 2. configurar (la primera vez tarda)
+cmake --build observability/build --target sample-service                      # 3. compilar
+PORT=8090 SERVICE_INSTANCE_ID=maquina-A ./observability/build/sample-service/sample-service   # terminal 1
+PORT=8091 SERVICE_INSTANCE_ID=maquina-B ./observability/build/sample-service/sample-service   # terminal 2
+seq 1 500 | xargs -P 20 -I{} curl -s -o /dev/null localhost:8090/videos/{}      # 4. tráfico
+```
+
+Grafana: `http://localhost:3000/d/tecflix-system/tecflix-system-overview`.
+
+## 14. Registro de decisiones (resumen del historial) (Decisiones en Claude)
+
+- **Prometheus + Grafana** en lugar de Aspire: herramientas conocidas, gratuitas y con Docker Compose. Datos por **OTLP/HTTP** hacia un Collector que desacopla las APIs del almacenamiento.
+- **Histograma con buckets propios** en segundos: los predeterminados (0, 5, 10, 25…) daban un p95 de 4.75 s para latencias de 30–115 ms.
+- **Módulo independiente** en `observability/` con su propio CMake, por indicación del equipo, sin tocar el código de los demás.
+- **Librería detrás de una interfaz** (`HttpMetrics`) con implementación real y muda, para poder probar sin Collector y compilar sin OpenTelemetry.
+- **Configuración por variables de entorno** para correr el mismo ejecutable en varias máquinas.
+- **Ruta declarada, no URL real**, para controlar la cardinalidad.
+- **Prueba con Collector falso** (protocolo JSON) en lugar de comprobar a mano en Prometheus.
+- **`TECFLIX_ENABLE_TELEMETRY`** para que quien no trabaja en observabilidad no pague el costo de compilar OpenTelemetry.
+- **Dashboard validado con `promtool`** y datos sintéticos antes de entregarlo.
+- **SPEC.md compartido** (igual para todos) y **SPEC_DASHBOARD.md** solo con el módulo; el historial detallado anterior quedó en Git.
+- **Pruebas con el registrador real, no con la versión muda:** el error `HTTP -1` pasó desapercibido porque `sample-service` se probó con `NoOp`. Pendiente: mover `Instrument` a un encabezado con pruebas unitarias.
+
+## 15. Agent Memory
 
 - **2026-10-13:** Se eligió Prometheus + Grafana para el dashboard. Se configuró OpenTelemetry Collector para recibir métricas OTLP, Prometheus para recopilarlas y Grafana para mostrarlas.
 - **2026-10-13:** Se preparó un ejemplo C++ con OpenTelemetry C++ v1.20.0 que simula 40 solicitudes, mide latencia y registra un contador con atributos de método y código HTTP. Se documentaron compilación y consultas en README y se conectó el panel de solicitudes al nombre de métrica del ejemplo.

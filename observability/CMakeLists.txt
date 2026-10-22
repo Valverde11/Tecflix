@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(CTest)            # primero: define BUILD_TESTING
 include(FetchContent)
+FetchContent_Declare(httplib
+  GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+  GIT_TAG v0.18.3 GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(httplib)
 add_subdirectory(telemetry)
 add_subdirectory(sample-service)
 
@@ -19,11 +23,10 @@ include(GoogleTest)
 add_executable(telemetry_test tests/telemetry_test.cpp)
 target_link_libraries(telemetry_test PRIVATE tecflix_telemetry GTest::gtest_main)
 gtest_discover_tests(telemetry_test)
+add_executable(instrument_test tests/instrument_test.cpp)
+target_link_libraries(instrument_test PRIVATE tecflix_telemetry_httplib GTest::gtest_main)
+gtest_discover_tests(instrument_test)
   if (TECFLIX_ENABLE_TELEMETRY)
-    FetchContent_Declare(httplib
-      GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
-      GIT_TAG v0.18.3 GIT_SHALLOW TRUE)
-    FetchContent_MakeAvailable(httplib)
 
     add_executable(telemetry_export_test tests/telemetry_export_test.cpp)
     target_link_libraries(telemetry_export_test PRIVATE
