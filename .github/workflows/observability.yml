@@ -1,0 +1,86 @@
+name: Observability CI
+
+on:
+  push:
+    paths:
+      - 'observability/**'
+      - 'SPEC_DASHBOARD.md'
+      - '.github/workflows/observability.yml'
+  pull_request:
+    paths:
+      - 'observability/**'
+      - 'SPEC_DASHBOARD.md'
+      - '.github/workflows/observability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: observability-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-and-coverage:
+    name: Build, tests and coverage
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Protobuf
+        shell: bash
+        run: |
+          if brew list protobuf >/dev/null 2>&1; then
+            echo "Protobuf is alredy installed"
+          else
+            brew install protobuf
+          fi
+
+      - name: Configure with telemetry and coverage
+        run: >-
+          cmake -S observability -B observability/build/ci
+          -DCMAKE_BUILD_TYPE=Debug
+          -DTECFLIX_ENABLE_TELEMETRY=ON
+          -DTECFLIX_COVERAGE=ON
+
+      - name: Build
+        run: cmake --build observability/build/ci --parallel 3
+
+      - name: Run tests and collect coverage
+        shell: bash
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/observability/build/ci/cov-%p.profraw
+        run: |
+          set -euo pipefail
+
+          find observability/build/ci -name '*.profraw' -delete
+          ctest --test-dir observability/build/ci --output-on-failure
+
+          if ! find observability/build/ci -name |cov-*.profraw' -print -quit | grep -q .; then
+            echo "ERROR: LLVM did not produce any .profraw coverage files." >&2
+            exit 1
+          fi
+
+          xcrun llvm-profdata merge -sparse observability/build/ci/cov-*.profraw \
+            -o observability/build/ci/coverage.profdata
+
+          xcrun llvm-cov export \
+            observability/build/ci/telemetry_test \
+            -object observability/build/ci/telemetry_export_test \
+            -object observability/build/ci/instrument_test \
+            -instr-profile=observability/build/ci/coverage.profdata \
+            -ignore-filename-regex='_deps|/tests/|/usr/|Developer' \
+            > observability/build/ci/coverage.json
+
+          python3 observability/scripts/check_coverage.py \
+            observability/build/ci/coverage.json --minimum 90
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: observability-coverage
+          path: observability/build/ci/coverage.json
+          if-no-files-found: warn
+          retention-days: 7
