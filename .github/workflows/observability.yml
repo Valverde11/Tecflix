@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           if brew list protobuf >/dev/null 2>&1; then
-            echo "Protobuf is alredy installed"
+            echo "Protobuf is already installed"
           else
             brew install protobuf
           fi
@@ -57,12 +57,14 @@ jobs:
           find observability/build/ci -name '*.profraw' -delete
           ctest --test-dir observability/build/ci --output-on-failure
 
-          if ! find observability/build/ci -name |cov-*.profraw' -print -quit | grep -q .; then
+          if ! find observability/build/ci \
+            -name 'cov-*.profraw' -print -quit | grep -q .; then
             echo "ERROR: LLVM did not produce any .profraw coverage files." >&2
             exit 1
           fi
 
-          xcrun llvm-profdata merge -sparse observability/build/ci/cov-*.profraw \
+          xcrun llvm-profdata merge -sparse \
+            observability/build/ci/cov-*.profraw \
             -o observability/build/ci/coverage.profdata
 
           xcrun llvm-cov export \
@@ -78,7 +80,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: observability-coverage
           path: observability/build/ci/coverage.json
