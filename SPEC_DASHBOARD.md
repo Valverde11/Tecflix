@@ -2,7 +2,7 @@
 
 Este archivo complementa a `SPEC.md` y cubre **solo** el módulo `observability/`. Si algo contradice a `SPEC.md`, manda `SPEC.md`. Antes de trabajar en este módulo, un agente lee `SPEC.md` (sección "Agent memory" incluida) y este archivo.
 
-**Responsable:** la persona del equipo que desarrolla el dashboard. **Última revisión:** 2026-10-21.
+**Responsable:** la persona del equipo que desarrolla el dashboard. **Última revisión:** 2026-10-26.
 
 ## 1. Alcance
 
@@ -18,12 +18,15 @@ Fuera de alcance: la lógica de negocio de las APIs y la aplicación web. El mó
 ## 2. Arquitectura
 
 ```
-API C++ ──(OTLP/HTTP, empuja)──► OpenTelemetry Collector ──(expone métricas)──► Prometheus ◄──(PromQL)── Grafana
- (librería tecflix_telemetry)         :4317 gRPC · :4318 HTTP       :9464           :9090                     :3000
+API C++ ──(OTLP/HTTP, métricas)──► OpenTelemetry Collector ──► Prometheus ◄── Grafana
+ (librería tecflix_telemetry)              :4317 / :4318            :9464       :9090 / :3000
+
+Prometheus ──(HTTP probe)──► Blackbox Exporter ──(GET /health)──► servicios
 ```
 
 - Las APIs **empujan** métricas por OTLP/HTTP al Collector; Prometheus las **jala** del Collector cada 15 s; Grafana consulta Prometheus.
-- Consecuencia importante: Prometheus solo ve al Collector, **no** a las APIs. Una API caída simplemente deja de enviar datos (ver §9, salud).
+- Las métricas de aplicación siguen pasando por OTLP y el Collector. Para la señal de vida se usa un camino independiente: Prometheus consulta Blackbox Exporter, que hace GET al `/health` de cada servicio.
+- Consecuencia importante: Prometheus solo ve al Collector por el pipeline de métricas; eso por sí solo no demuestra que una API esté viva. El probe HTTP es una señal separada.
 
 ## 3. Estructura del módulo
 
@@ -37,8 +40,10 @@ observability/
 │   ├── include/tecflix/telemetry/{config.hpp, telemetry.hpp}
 │   └── src/{config.cpp, telemetry.cpp, telemetry_noop.cpp}
 ├── sample-service/          # API de juguete para generar tráfico (src/main.cpp)
-├── tests/                   # telemetry_test.cpp, telemetry_export_test.cpp, scoped_env.hpp
-└── stack/                   # docker-compose.yml, otel-collector.yaml, prometheus.yaml, grafana/
+├── tests/                   # telemetry_test.cpp, telemetry_export_test.cpp, instrument_test.cpp
+├── docs/integracion.md      # contrato para integrar cada API
+├── scripts/check_coverage.py # umbral de cobertura para CI
+└── stack/                   # Compose, Collector, Prometheus, Blackbox Exporter y Grafana
 ```
 
 ## 4. Stack local (Docker)
@@ -48,10 +53,13 @@ observability/
 | OpenTelemetry Collector | `otel/opentelemetry-collector-contrib:0.120.0` | 4317 (gRPC), 4318 (HTTP) |
 | Prometheus | `prom/prometheus:v3.2.1` | 9090 |
 | Grafana | `grafana/grafana:11.5.2` | 3000 (usuario inicial `admin`/`admin`: cambiarlo) |
+| Blackbox Exporter | `prom/blackbox-exporter:v0.29.1` | 9115, solo dentro de la red Compose |
 
 - Los puertos se publican solo en `127.0.0.1`. **Para la versión 2.0, con APIs en otra máquina, hay que abrirlos** (ver §12).
-- Prometheus tiene dos targets: `otel-collector` (métricas propias del Collector) y `otel-metrics` (el exportador del Collector en `otel-collector:9464`). Intervalo de recolección: 15 s.
-- El Collector convierte los atributos del recurso (`service.name`, `service.instance.id`) en etiquetas de Prometheus. Hoy solo tiene un pipeline de **métricas**.
+- Prometheus recopila métricas propias de sí mismo, del Collector (`otel-collector:8888`), del exporter OTLP (`otel-metrics:9464`) y del Blackbox Exporter (`blackbox-exporter:9115`). El intervalo general es 15 s.
+- El job `service-health` consulta `/health` por medio de Blackbox Exporter. En el entorno local, el target inicial es `http://host.docker.internal:8090/health`, correspondiente al `sample-service` ejecutado en el host y etiquetado como `sample-service / local-dev`.
+- La configuración Blackbox valida HTTP 200 y un cuerpo que contenga `"status":"ok"`. `probe_success=1` indica que la comprobación pasó; `0` indica que no pasó. La comprobación no depende de que la API exporte métricas.
+- El Collector convierte los atributos del recurso (`service.name`, `service.instance.id`) en etiquetas de Prometheus. Aún solo tiene un pipeline de **métricas**; las trazas siguen pendientes.
 - Grafana se aprovisiona desde archivos: datasource con uid `prometheus` y dashboard `tecflix-system` (carpeta Tecflix, archivo `grafana/dashboards/tecflix-system.json`, montado de solo lectura). Los cambios se hacen en el archivo, no en la interfaz.
 - Comandos (desde `observability/stack/`): `docker compose up -d`, `docker compose ps`, `docker compose down` (conserva datos), `docker compose down -v` (borra datos).
 
@@ -108,9 +116,9 @@ Servidor HTTP con `cpp-httplib` v0.18.3 que genera tráfico realista:
 - Variable `PORT` (por defecto 8090). Se detiene limpio con Ctrl+C: envía las últimas métricas y termina.
 - Es el banco de pruebas del dashboard; no es una API de negocio.
 
-## 7. Dashboard de Grafana (`tecflix-system`, versión 2)
+## 7. Dashboard de Grafana (`tecflix-system`)
 
-Variables: **Servicio** e **Instancia** (múltiples, con "All"). Todas las consultas filtran por ellas y usan `$__rate_interval`.
+Variables: **Servicio** e **Instancia** (múltiples, con "All"). Las consultas HTTP filtran por ambas y las consultas de tasa/latencia usan `$__rate_interval`; la señal de salud usa `probe_success`.
 
 | Panel | Qué muestra |
 |---|---|
@@ -123,16 +131,19 @@ Variables: **Servicio** e **Instancia** (múltiples, con "All"). Todas las consu
 | Solicitudes por código de estado | Mezcla de 200, 404, 500... apilada |
 | Promedio vs p95 vs p99 | Muestra por qué el promedio engaña |
 | Rutas ordenadas por p95 | Tabla para decidir qué optimizar primero |
+| Salud de servicios (`/health`) | Último resultado del probe HTTP por servicio e instancia; independiente de OTLP |
+| Blackbox Exporter | Estado del proceso que ejecuta las comprobaciones de salud |
 
 Convenciones PromQL: `sum(rate(...)) or vector(0)` para que "sin errores" sea 0 y no "sin datos"; `or 0 * sum by (...)(...)` para conservar series con valor cero; el p95 es una **estimación** calculada dentro del bucket (p. ej. con 32 solicitudes ≤ 100 ms de 40 y 40 ≤ 125 ms: 0.1 + 0.025 × (38 − 32)/(40 − 32) = 118.75 ms).
 
-**Validación:** las 12 consultas se verificaron con `promtool` 3.2.1 (sintaxis) y 6 de ellas con datos sintéticos de resultado conocido. La disposición visual y los filtros deben confirmarse en un Grafana real.
+**Validación del dashboard de métricas (estado anterior):** las 12 consultas de métricas se verificaron con `promtool` 3.2.1 y 6 con datos sintéticos. El nuevo job `service-health`, la consulta `probe_success` y el nuevo panel deben validarse en runtime tras actualizar Compose; no se considera validado solo por editar los archivos.
 
 ## 8. Pruebas y cobertura
 
-- `telemetry_test.cpp` (8 pruebas: configuración, URL, versión muda, construcción de `Telemetry`) y `telemetry_export_test.cpp` (1 prueba: un Collector falso con `cpp-httplib` recibe el envío real y se comprueba que contiene la ruta, la instancia, el nombre de la métrica y un límite de los buckets). `scoped_env.hpp` fija y restaura variables de entorno entre pruebas (compatible con Windows).
-- Resultado medido (macOS, clang, `TECFLIX_ENABLE_TELEMETRY=ON`): 9/9 pruebas; **100 % de funciones, líneas y ramas** (config.cpp, telemetry.cpp, telemetry.hpp). En Linux con GCC (`OFF`, `-Wall -Wextra`): compila sin advertencias y pasan las 8 pruebas.
-- El 100 % mide que el código **se ejecutó**, no que esté bien: dos pruebas solo comprueban que no fallen. Y no cubre `sample-service`.
+- `telemetry_test.cpp` contiene 8 pruebas; `instrument_test.cpp`, 10; `telemetry_export_test.cpp`, 1 (solo con `TECFLIX_ENABLE_TELEMETRY=ON`). La ejecución local reportada más reciente fue **19/19 tests passed** con telemetría habilitada.
+- Cobertura reportada por el responsable en macOS: 100 % en `config.cpp`, `telemetry.cpp`, `telemetry.hpp` e `instrument.hpp`. Esta cifra corresponde a los archivos medidos y **no debe interpretarse como 100 % de todo el módulo**, porque `sample-service` no forma parte de esa medición.
+- El nuevo workflow `.github/workflows/observability.yml` configura la telemetría real, ejecuta CTest y aplica un umbral de 90 % a líneas, funciones y regiones (y ramas cuando LLVM las reporte) de los objetos de cobertura seleccionados. El primer resultado del workflow debe revisarse en GitHub; no se afirma que haya pasado hasta verlo ejecutado.
+- El 100 % mide que el código se ejecutó, no que esté bien: se necesita complementar la cobertura con aserciones que verifiquen los resultados esperados.
 
 Comandos (desde la raíz del repositorio; macOS):
 
@@ -155,11 +166,11 @@ Pruebas rápidas sin OpenTelemetry: `cmake -S observability -B observability/bui
 |---|---|
 | Métricas con OpenTelemetry en el dashboard | **Hecho** para métricas HTTP (latencia, errores, tráfico) |
 | **Traces** | **Pendiente** (no hay SDK de trazas ni pipeline en el Collector) |
-| Salud de cada componente | **Parcial**: `UP` mide el Collector, no las APIs; falta señal de vida (ver §12) |
+| Salud de cada componente | **Parcial**: ahora existe un probe independiente para `sample-service`; faltan targets de las APIs reales y validación en runtime |
 | CPU y memoria, throughput de streaming | **Pendiente** |
 | Integración con las APIs reales | **Pendiente**: ninguna API usa aún la librería |
-| Pruebas unitarias ≥ 90 % | **Hecho** para el módulo (medido en macOS) |
-| CI en GitHub Actions | **Pendiente** (no existe `.github/workflows`) |
+| Pruebas unitarias ≥ 90 % | **Medición local reportada** para los archivos de telemetría indicados; el nuevo workflow verifica el umbral en los archivos seleccionados |
+| CI en GitHub Actions | **Preparado en código**: existe workflow para tests y cobertura del módulo; pendiente confirmar el resultado de GitHub Actions y decidir CI de Windows |
 | Compilar en Windows | **Sin probar** (preset y `vcpkg.json` creados; ejecutar `cmake --preset windows` dentro de `observability/`) |
 | Instancias duplicadas (V2.0) | **Parcial**: el dashboard ya filtra por instancia; falta la instancia por defecto y el Collector redundante |
 
@@ -181,15 +192,16 @@ Pruebas rápidas sin OpenTelemetry: `cmake -S observability -B observability/bui
 
 ## 12. Hoja de ruta para terminar el módulo
 
-1. **Integrar una API real** con el contrato de `SPEC.md` §4 (la primera que exista) y documentar los pasos en `observability/docs/integracion.md`; verificar cómo el CMake raíz incluye `observability/telemetry`.
-2. **Salud y recursos:** métricas observables de señal de vida (uptime), memoria y CPU del proceso, con una interfaz propia y una implementación por sistema operativo (macOS, Linux, Windows) y pruebas con una versión falsa; paneles "componentes vivos", memoria y CPU.
-3. **Instancia por defecto** = nombre del equipo (hostname).
-4. **Traces:** elegir backend con el equipo, agregar el SDK de trazas y un pipeline en el Collector; un span por solicitud en el envoltorio de las APIs.
-5. **Métricas de streaming** (bytes entregados, transcodificaciones, duración) cuando exista la API de streaming.
-6. **CI:** workflow en GitHub Actions con compilación, pruebas y cobertura con umbral de 90 %; decidir el trabajo de Windows.
-7. **Versión 2.0:** abrir los puertos del Collector para APIs en otra máquina, evaluar un segundo Collector, parametrizar el stack por entorno.
-8. **Pruebas de carga** con k6 sobre las APIs, usando este dashboard como evidencia (capturas antes y después de cada optimización) para el paper.
-9. **Limpieza:** actualizar `observability/README.md`, corregir errores de escritura en comentarios, decidir si se elimina el contador redundante.
+1. **Validar el nuevo probe de salud**: levantar Blackbox Exporter, `sample-service` y Prometheus; comprobar `probe_success=1`, detener el servicio y comprobar `0`; corregir el nombre `host.docker.internal` si el entorno local lo requiere.
+2. **Integrar una API real** cuando exista, siguiendo `observability/docs/integracion.md`; añadir su `/health` como target con `service_name` y `service_instance_id` y validar métricas reales.
+3. **Salud y recursos:** implementar métricas de uptime, memoria y CPU del proceso con una interfaz propia, implementaciones por sistema operativo (macOS, Linux, Windows) y pruebas con una versión falsa; añadir paneles de recursos.
+4. **Instancia por defecto** = nombre del equipo (hostname), manteniendo IDs únicos entre las dos máquinas.
+5. **Traces:** elegir backend con el equipo, agregar el SDK de trazas y un pipeline en el Collector; un span por solicitud en el envoltorio de las APIs.
+6. **Métricas de streaming** (bytes entregados, transcodificaciones, duración) cuando exista la API de streaming.
+7. **CI:** revisar que `.github/workflows/observability.yml` pase en GitHub, que el umbral de 90 % refleje el alcance acordado, y decidir el trabajo de Windows.
+8. **Versión 2.0:** definir conectividad segura a APIs en otra máquina, evaluar un segundo Collector y parametrizar el stack por entorno.
+9. **Pruebas de carga** con k6 sobre las APIs, usando este dashboard como evidencia (capturas antes/después de cada optimización) para el paper.
+10. **Limpieza:** actualizar o recuperar la documentación README según el estado del repositorio, corregir comentarios y decidir si se elimina el contador redundante.
 
 ## 13. Cómo ejecutar el módulo (resumen)
 
@@ -239,3 +251,5 @@ Grafana: `http://localhost:3000/d/tecflix-system/tecflix-system-overview`.
 - **2026-10-16:** El usuario compartió capturas de Grafana después de ajustar buckets: el panel p95 se mantiene alrededor de 118.5–120 ms, coherente con el simulador (~30–115 ms y p95 estimado por buckets); el panel de tasa recibe series y el contador conserva 36 respuestas 200 + 4 respuestas 500. Una caída/reinicio visible en valores acumulados puede ser reset del proceso, comportamiento esperado para un Counter; `rate()` maneja resets. Paso de validación de buckets satisfactorio. Siguiente fase recomendada: dejar el simulador como smoke test y, antes de escalar a tres APIs, elegir un servicio HTTP real mínimo e instrumentar un endpoint `/health` y una ruta de prueba con contador, status y histograma; validar consultas/dashboard y explicar el código paso a paso. El repositorio aún no contiene APIs de negocio implementadas.
 - **2026-10-19:** Se realizó revisión técnica del repositorio. Estado: única capacidad funcional implementada es observabilidad C++ (librería `tecflix_telemetry`, simulador `sample-service`, Collector/Prometheus/Grafana y pruebas); no hay frontend, servicios REST de usuarios/metadata/streaming, persistencia, carga/transcodificación de video, auth, CI ni pruebas de carga. Build actual exitoso; CTest 9/9 y Compose config/JSON/YAML válidos. `README.md` está desactualizado y refiere `examples/cpp-metrics`/`docker compose` raíz que no corresponden a rutas actuales bajo `observability/`. Hallazgo de compatibilidad: métrica usa atributo `http.response.status.code` en vez del convencional `http.response.status_code`; revisar nomenclatura y dashboard. Configuración OTLP solo resuelve nombre/instancia/endpoint base, con instance id estático por defecto; faltan validación, opciones endpoint/protocol/headers/errores y pruebas de fallos. `HttpMetrics::Record` acepta status/duración arbitrarios y depende del servicio para evitar rutas de cardinalidad alta. Stack local no dispone de readiness/healthchecks, retención/operación remota ni HA. Dashboard editado localmente quedó sin modificar por la revisión; queries esperan las etiquetas actuales y tasa de errores debería controlar denominador cero. Próximos pasos: corregir docs y naming, construir API HTTP mínima real con contrato/error handling, instrumentarla y probar end-to-end; luego auth/usuarios/almacenamiento, metadata/Mongo, pipeline streaming FFmpeg/cuotas/visibilidad, frontend, seguridad/operación/CI y HA/carga V2.
 - **2026-10-19:** El usuario confirmó que revisó los tres cambios locales y los guardó en commit `954c960` (`Mejora en Grafana`); la rama `Dashboard_Sistema` está limpia. La rama contiene 11 commits más que `main` local, mientras que `main` local y `origin/main` divergen (main local 2 commits adelante y 1 atrás); frente a `origin/main`, la rama está 1 commit atrás y 13 adelante. Recomendación: no hacer merge directo; primero `git fetch origin`, revisar `git log origin/main..HEAD` y `git diff origin/main...HEAD` (incluido el renombre de SPEC.md a SPEC_DASHBOARD.md), probar desde build limpio (`cmake -S observability -B observability/build`, build y CTest), luego publicar rama y abrir PR a `main`; verificar que el PR no incluya cambios inesperados y que el equipo acepte el renombre de la especificación. Build actual no está disponible en el worktree recién cambiado, así que debe configurarse de nuevo antes de confirmar las pruebas de este commit.
+- **2026-10-27:** El responsable validó en macOS la compilación del módulo con telemetría habilitada, 19/19 pruebas y 100 % de cobertura reportada en `config.cpp`, `telemetry.cpp`, `telemetry.hpp` e `instrument.hpp`. La validación end-to-end con `sample-service` mostró los paneles de tasa, latencia por ruta, errores 5xx, códigos HTTP y promedio/p95/p99. Los valores informados (8,90 % de errores globales y latencia p95 cercana a 197 ms) son resultados de una ejecución del simulador, no umbrales esperados para las APIs reales.
+- **2026-10-27:** Se preparó comprobación HTTP de salud independiente mediante Blackbox Exporter, con un target inicial para `sample-service / local-dev`; se añadió el panel `Salud de servicios (/health)`, se amplió la fuente de variables para incluir series `probe_success`, se creó `observability/docs/integracion.md` y un workflow de CI que ejecuta tests y comprueba cobertura. Pendiente: validar Compose, Prometheus y el panel nuevo en runtime, y observar el resultado real del workflow en GitHub.
