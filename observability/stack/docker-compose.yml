@@ -1,4 +1,10 @@
 services:
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.29.1
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    volumes:
+      - ./blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
@@ -18,6 +24,8 @@ services:
       - prometheus-data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+    depends_on:
+      - blackbox-exporter
 
   grafana:
     image: grafana/grafana:11.5.2
