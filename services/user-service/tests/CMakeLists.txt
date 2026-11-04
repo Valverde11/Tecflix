@@ -4,6 +4,7 @@ add_executable(user_service_tests
     btree_key_test.cpp
     btree_test.cpp
     btree_node_test.cpp
+    btree_remove_test.cpp
     byte_codec_test.cpp
     config_test.cpp
     page_file_test.cpp

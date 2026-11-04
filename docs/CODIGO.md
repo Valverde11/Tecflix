@@ -261,3 +261,44 @@ Devuelve el total de claves, y las pruebas lo comparan con lo insertado. Sirve p
 - que con `t = 32` 2000 claves quepan en 3 niveles como máximo.
 
 **Observación para V2.0.** Cada escritura hace `flush()`, así que insertar miles de claves tarda 1–2 s en las pruebas. Es una oportunidad de optimización medible (por ejemplo, un caché de páginas o agrupar escrituras), que se puede usar para las 5 mejoras de rendimiento que pide V2.0.
+
+### U2.6 — Borrado en el árbol B
+
+**Archivos:** `include/tecflix/users/btree/btree.hpp`, `src/btree/btree.cpp`, `tests/btree_remove_test.cpp`.
+
+**El problema.** Ningún nodo, salvo la raíz, puede quedar con menos de `t − 1` claves. Si se borra una clave de un nodo que ya tiene el mínimo, se rompe el árbol.
+
+**La idea** es simétrica a la inserción: **arreglar en la bajada**. Antes de bajar a un hijo, se garantiza que ese hijo tenga **al menos `t` claves**, una más que el mínimo. Así, cuando se llegue a borrar, siempre se puede quitar una clave sin dejar el nodo por debajo del mínimo, y nunca hay que volver hacia arriba.
+
+Los nombres de los casos son los de Cormen, cap. 18.3. En cada nodo, `RemoveFrom` busca la clave con `LowerBound`.
+
+**Caso 1 — la clave está en una hoja.** Se quita y listo. Es seguro porque al bajar se garantizó que la hoja tiene al menos `t` claves, o es la raíz.
+
+**Caso 2 — la clave está en un nodo interno** (`RemoveFromInternal`). No se puede quitar sin más, porque separa dos hijos. Hay tres sub-casos:
+- **2a.** El hijo izquierdo tiene al menos `t` claves: la clave se reemplaza por su **predecesora**, la mayor clave del subárbol izquierdo (`MaxEntry`: bajar siempre por el último hijo hasta la hoja). Luego se borra la predecesora de ese subárbol.
+- **2b.** Si no, y el hijo derecho tiene al menos `t` claves: lo mismo con la **sucesora**, la menor del subárbol derecho (`MinEntry`).
+- **2c.** Si los dos tienen el mínimo (`t − 1`): se **fusionan** en un solo nodo con la clave en medio y se borra la clave de ese nodo.
+
+**Caso 3 — la clave no está en este nodo** y hay que bajar al hijo `i` (`EnsureChildCanLoseKey`). Si ese hijo tiene solo `t − 1` claves, primero se le da una más:
+- **3a. Préstamo (rotación).** Si un hermano vecino tiene al menos `t` claves, presta una pasando por el padre. Por ejemplo, con el hermano izquierdo (`BorrowFromLeft`):
+
+  ```
+        padre [ 20 ]                         padre [ 15 ]
+        /        \           →               /        \
+  izq [10|15]   hijo [30]              izq [10]   hijo [20|30]
+  ```
+
+  La clave separadora del padre (20) **baja** al hijo, y la mayor del hermano (15) **sube** al padre. Si no son hojas, el último hijo del hermano pasa a ser el primero del hijo. El orden se mantiene. `BorrowFromRight` es el espejo.
+- **3b. Fusión.** Si ningún hermano puede prestar, el hijo se fusiona con un hermano (`MergeChildren`): `(t − 1) + 1 + (t − 1) = 2t − 1` claves, que caben exactas en un nodo. La página del nodo derecho se **libera** y vuelve a la lista de páginas libres. Si la fusión fue con el hermano izquierdo, el rango buscado ahora está en el hijo `i − 1`, y por eso la función devuelve el índice actualizado.
+
+**Cómo baja de altura el árbol** (`ShrinkRootIfEmpty`). Una fusión puede dejar la raíz interna sin claves y con un solo hijo. Ese hijo pasa a ser la raíz y la página vieja se libera. Es la única forma en que el árbol pierde altura: **por arriba, igual que crece**. Por eso las hojas siguen todas a la misma profundidad.
+
+**Borrar una clave que no existe.** Devuelve `false`. Puede haber hecho préstamos o fusiones en la bajada, pero el árbol sigue siendo válido (las pruebas lo verifican).
+
+**Pruebas:**
+- **Casos básicos:** hoja raíz, clave inexistente, árbol vacío.
+- **Nodos internos:** con `t = 2` e inserción secuencial, las claves múltiplos de 4 quedan en nodos internos; borrarlas pasa por los casos 2a, 2b y 2c.
+- **Borrar todo:** 400 claves en orden aleatorio, verificando **todas** las invariantes después de cada borrado; al final la altura vuelve a 1. También 1000 claves borradas en orden ascendente y descendente (`t = 3`).
+- **Prueba basada en modelo:** 3000 operaciones aleatorias (60 % insertar, 40 % borrar) se aplican a la vez al árbol y a un `std::map` de la librería estándar, que sirve como "respuesta correcta". Después de cada operación deben devolver lo mismo, y al final contener exactamente lo mismo. Esta prueba encuentra combinaciones de casos que a mano no se le ocurrirían a nadie.
+- **Reutilización de páginas:** llenar, vaciar y volver a llenar con 1000 claves no agranda el archivo.
+- **Persistencia:** los borrados se mantienen después de reabrir.

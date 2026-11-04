@@ -16,8 +16,9 @@ namespace tecflix::users {
 // (Introduction to Algorithms, cap. 18) con grado mínimo t:
 //  - todo nodo tiene como máximo 2t - 1 claves y, salvo la raíz, al menos t - 1;
 //  - todas las hojas están a la misma profundidad.
-// La inserción divide los nodos llenos *mientras baja*, así nunca necesita
-// volver hacia arriba para corregir el árbol.
+// La inserción divide los nodos llenos *mientras baja*, y el borrado asegura
+// que cada nodo al que entra tenga al menos t claves (prestando o fusionando);
+// así ninguna operación necesita volver hacia arriba para corregir el árbol.
 class BTree {
  public:
   static constexpr std::uint32_t kDefaultDegree = PageFile::kMaxDegree;
@@ -27,6 +28,8 @@ class BTree {
   std::optional<std::uint64_t> Search(const BTreeKey& key);
   // Devuelve false (sin modificar nada) si la clave ya existe.
   bool Insert(const BTreeKey& key, std::uint64_t value);
+  // Devuelve false si la clave no existe.
+  bool Remove(const BTreeKey& key);
 
   // Cantidad de niveles: 1 si la raíz es hoja.
   std::size_t Height();
@@ -43,6 +46,29 @@ class BTree {
   // Divide el hijo lleno parent.children[index] en dos y sube su clave
   // mediana a parent. Escribe los tres nodos en disco.
   void SplitChild(BTreeNode& parent, std::size_t index, BTreeNode& child);
+
+  struct Entry {
+    BTreeKey key;
+    std::uint64_t value;
+  };
+  bool RemoveFrom(BTreeNode node, const BTreeKey& key);
+  // La clave está en node.keys[index] y node es interno.
+  bool RemoveFromInternal(BTreeNode& node, std::size_t index);
+  // Garantiza que node.children[index] tenga al menos t claves antes de bajar
+  // a él. Devuelve el índice del hijo donde quedó el rango buscado (cambia si
+  // hubo que fusionarlo con su hermano izquierdo).
+  std::size_t EnsureChildCanLoseKey(BTreeNode& node, std::size_t index);
+  void BorrowFromLeft(BTreeNode& node, std::size_t index, BTreeNode& child,
+                      BTreeNode& left);
+  void BorrowFromRight(BTreeNode& node, std::size_t index, BTreeNode& child,
+                       BTreeNode& right);
+  // Une node.children[index], la clave node.keys[index] y
+  // node.children[index + 1] en un solo nodo y libera la página del derecho.
+  void MergeChildren(BTreeNode& node, std::size_t index);
+  Entry MaxEntry(BTreeNode node);
+  Entry MinEntry(BTreeNode node);
+  // Si la raíz interna quedó sin claves, su único hijo pasa a ser la raíz.
+  void ShrinkRootIfEmpty();
 
   struct KeyRange {
     std::optional<BTreeKey> lower;  // las claves del subárbol son > lower

@@ -103,6 +103,173 @@ void BTree::SplitChild(BTreeNode& parent, std::size_t index, BTreeNode& child) {
   pages_.WriteNode(parent);
 }
 
+bool BTree::Remove(const BTreeKey& key) {
+  const bool removed = RemoveFrom(pages_.ReadNode(pages_.RootPage()), key);
+  ShrinkRootIfEmpty();
+  return removed;
+}
+
+bool BTree::RemoveFrom(BTreeNode node, const BTreeKey& key) {
+  const std::size_t index = node.LowerBound(key);
+  if (node.HasKeyAt(index, key)) {
+    if (node.is_leaf) {
+      // Caso 1: la clave está en una hoja que puede perderla (se garantizó
+      // al bajar que tiene al menos t claves, o es la raíz).
+      node.keys.erase(At(node.keys, index));
+      node.values.erase(At(node.values, index));
+      pages_.WriteNode(node);
+      return true;
+    }
+    return RemoveFromInternal(node, index);
+  }
+  if (node.is_leaf) {
+    return false;
+  }
+  // Caso 3: la clave, si existe, está en el subárbol children[index].
+  const std::size_t child_index = EnsureChildCanLoseKey(node, index);
+  return RemoveFrom(pages_.ReadNode(node.children[child_index]), key);
+}
+
+bool BTree::RemoveFromInternal(BTreeNode& node, std::size_t index) {
+  const BTreeKey key = node.keys[index];
+  BTreeNode left = pages_.ReadNode(node.children[index]);
+  if (left.keys.size() > MinKeys()) {
+    // Caso 2a: se reemplaza la clave por su predecesora (la mayor del
+    // subárbol izquierdo) y se borra la predecesora de ese subárbol.
+    const Entry predecessor = MaxEntry(left);
+    node.keys[index] = predecessor.key;
+    node.values[index] = predecessor.value;
+    pages_.WriteNode(node);
+    return RemoveFrom(left, predecessor.key);
+  }
+  BTreeNode right = pages_.ReadNode(node.children[index + 1]);
+  if (right.keys.size() > MinKeys()) {
+    // Caso 2b: simétrico, con la sucesora (la menor del subárbol derecho).
+    const Entry successor = MinEntry(right);
+    node.keys[index] = successor.key;
+    node.values[index] = successor.value;
+    pages_.WriteNode(node);
+    return RemoveFrom(right, successor.key);
+  }
+  // Caso 2c: ambos hijos tienen el mínimo; se fusionan con la clave en medio
+  // y se borra la clave del nodo fusionado.
+  MergeChildren(node, index);
+  return RemoveFrom(pages_.ReadNode(node.children[index]), key);
+}
+
+std::size_t BTree::EnsureChildCanLoseKey(BTreeNode& node, std::size_t index) {
+  BTreeNode child = pages_.ReadNode(node.children[index]);
+  if (child.keys.size() > MinKeys()) {
+    return index;
+  }
+  const bool has_left = index > 0;
+  const bool has_right = index < node.keys.size();
+  if (has_left) {
+    BTreeNode left = pages_.ReadNode(node.children[index - 1]);
+    if (left.keys.size() > MinKeys()) {
+      BorrowFromLeft(node, index, child, left);  // caso 3a
+      return index;
+    }
+  }
+  if (has_right) {
+    BTreeNode right = pages_.ReadNode(node.children[index + 1]);
+    if (right.keys.size() > MinKeys()) {
+      BorrowFromRight(node, index, child, right);  // caso 3a
+      return index;
+    }
+  }
+  // Caso 3b: ningún hermano puede prestar; se fusiona con uno de ellos.
+  if (has_right) {
+    MergeChildren(node, index);
+    return index;
+  }
+  MergeChildren(node, index - 1);
+  return index - 1;
+}
+
+// Rotación a la derecha: la clave separadora del padre baja al inicio del
+// hijo y la mayor clave del hermano izquierdo sube a ocupar su lugar.
+void BTree::BorrowFromLeft(BTreeNode& node, std::size_t index,
+                           BTreeNode& child, BTreeNode& left) {
+  child.keys.insert(child.keys.begin(), node.keys[index - 1]);
+  child.values.insert(child.values.begin(), node.values[index - 1]);
+  if (!child.is_leaf) {
+    child.children.insert(child.children.begin(), left.children.back());
+    left.children.pop_back();
+  }
+  node.keys[index - 1] = left.keys.back();
+  node.values[index - 1] = left.values.back();
+  left.keys.pop_back();
+  left.values.pop_back();
+
+  pages_.WriteNode(left);
+  pages_.WriteNode(child);
+  pages_.WriteNode(node);
+}
+
+// Rotación a la izquierda: simétrica a BorrowFromLeft.
+void BTree::BorrowFromRight(BTreeNode& node, std::size_t index,
+                            BTreeNode& child, BTreeNode& right) {
+  child.keys.push_back(node.keys[index]);
+  child.values.push_back(node.values[index]);
+  if (!child.is_leaf) {
+    child.children.push_back(right.children.front());
+    right.children.erase(right.children.begin());
+  }
+  node.keys[index] = right.keys.front();
+  node.values[index] = right.values.front();
+  right.keys.erase(right.keys.begin());
+  right.values.erase(right.values.begin());
+
+  pages_.WriteNode(right);
+  pages_.WriteNode(child);
+  pages_.WriteNode(node);
+}
+
+void BTree::MergeChildren(BTreeNode& node, std::size_t index) {
+  BTreeNode left = pages_.ReadNode(node.children[index]);
+  const BTreeNode right = pages_.ReadNode(node.children[index + 1]);
+
+  // t - 1 claves + la separadora + t - 1 claves = 2t - 1: el resultado cabe.
+  left.keys.push_back(node.keys[index]);
+  left.values.push_back(node.values[index]);
+  left.keys.insert(left.keys.end(), right.keys.begin(), right.keys.end());
+  left.values.insert(left.values.end(), right.values.begin(), right.values.end());
+  left.children.insert(left.children.end(), right.children.begin(),
+                       right.children.end());
+
+  node.keys.erase(At(node.keys, index));
+  node.values.erase(At(node.values, index));
+  node.children.erase(At(node.children, index + 1));
+
+  pages_.WriteNode(left);
+  pages_.WriteNode(node);
+  pages_.FreePage(right.page);
+}
+
+BTree::Entry BTree::MaxEntry(BTreeNode node) {
+  while (!node.is_leaf) {
+    node = pages_.ReadNode(node.children.back());
+  }
+  return {node.keys.back(), node.values.back()};
+}
+
+BTree::Entry BTree::MinEntry(BTreeNode node) {
+  while (!node.is_leaf) {
+    node = pages_.ReadNode(node.children.front());
+  }
+  return {node.keys.front(), node.values.front()};
+}
+
+void BTree::ShrinkRootIfEmpty() {
+  const BTreeNode root = pages_.ReadNode(pages_.RootPage());
+  if (!root.is_leaf && root.keys.empty()) {
+    // Única forma en que el árbol baja de altura: por arriba, igual que crece.
+    pages_.SetRootPage(root.children.front());
+    pages_.FreePage(root.page);
+  }
+}
+
 std::size_t BTree::Height() {
   std::size_t height = 1;
   BTreeNode node = pages_.ReadNode(pages_.RootPage());
