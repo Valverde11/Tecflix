@@ -2,9 +2,8 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 
-#include "tecflix/users/storage/byte_codec.hpp"
+#include "tecflix/users/storage/binary_file.hpp"
 #include "tecflix/users/storage/user_record.hpp"
 
 namespace tecflix::users {
@@ -28,9 +27,6 @@ class UserDataFile {
   // archivo existe pero no tiene un formato válido.
   explicit UserDataFile(const std::filesystem::path& path);
 
-  UserDataFile(const UserDataFile&) = delete;
-  UserDataFile& operator=(const UserDataFile&) = delete;
-
   // Agrega el registro al final y devuelve su índice.
   std::uint64_t Append(const UserRecord& record);
   // Lanzan std::out_of_range si el índice no existe.
@@ -40,15 +36,12 @@ class UserDataFile {
   std::uint64_t RecordCount() const { return record_count_; }
 
  private:
-  void CreateEmpty(const std::filesystem::path& path);
-  void LoadHeader(const std::filesystem::path& path);
+  void LoadHeader();
   void WriteHeader();
   void RequireExistingIndex(std::uint64_t index) const;
   static std::uint64_t OffsetOf(std::uint64_t index);
-  void WriteBytesAt(std::uint64_t offset, const Bytes& bytes);
-  Bytes ReadBytesAt(std::uint64_t offset, std::size_t size);
 
-  std::fstream file_;
+  BinaryFile file_;
   std::uint64_t record_count_ = 0;
 };
 

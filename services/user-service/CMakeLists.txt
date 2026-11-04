@@ -25,6 +25,7 @@ add_library(user_service_core
     src/config.cpp
     src/environment.cpp
     src/health_controller.cpp
+    src/storage/binary_file.cpp
     src/storage/byte_codec.cpp
     src/storage/user_data_file.cpp
     src/storage/user_record.cpp
