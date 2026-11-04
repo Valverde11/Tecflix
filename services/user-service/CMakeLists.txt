@@ -19,8 +19,10 @@ endif()
 
 # La lógica vive en una librería para que las pruebas la usen sin pasar por main().
 add_library(user_service_core
+    src/api_server.cpp
     src/config.cpp
     src/environment.cpp
+    src/health_controller.cpp
 )
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core

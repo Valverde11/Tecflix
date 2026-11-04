@@ -43,3 +43,18 @@ Se apagan las opciones de OpenSSL, zlib, brotli y zstd de httplib: no se usan en
 - **Constructor privado.** Solo se crea un `Config` por medio de las fábricas, lo que garantiza que siempre esté validado.
 
 **Pruebas.** GoogleTest v1.17.0 por FetchContent. `gtest_discover_tests` registra cada prueba en CTest. Se ejecutan con `ctest --preset default`. `gtest_force_shared_crt` evita un error de enlace en Windows por mezclar runtimes de C.
+
+### U0.6 — Servidor HTTP y `GET /health`
+
+**Archivos:** `include/tecflix/users/api_server.hpp`, `src/api_server.cpp`, `include/tecflix/users/health_controller.hpp`, `src/health_controller.cpp`, `src/main.cpp`, `tests/api_server_test.cpp`.
+
+**`HealthController`.** Registra `GET /health`, que responde `200` con `{"status":"ok"}`. Es el contrato que exige el dashboard (SPEC sección 5): Prometheus consulta esta ruta para saber si el servicio está vivo. El JSON se arma con nlohmann/json en vez de escribir el texto a mano, para que el formato siempre sea válido.
+
+**`ApiServer`.** Es dueño del `httplib::Server` y registra las rutas de cada controlador. Cada grupo de rutas vive en su propio controlador (salud, usuarios, autenticación…), y el servidor solo los junta. Así cada clase tiene una sola responsabilidad.
+- **No se puede copiar** (constructor de copia borrado): un servidor que escucha un puerto es un recurso único.
+- **`Bind` separado de `Listen`.** Primero se abre el puerto y después se empieza a atender. Esto permite que `main` informe si el puerto está ocupado antes de quedarse escuchando, y que las pruebas pidan un puerto libre cualquiera (`BindToAnyPort`) para no chocar con otros servicios.
+- **`WaitUntilReady`.** Las pruebas escuchan en otro hilo. Si `Stop()` llegara antes de que `Listen()` empezara, el hilo nunca terminaría. Esperar a que el servidor esté listo elimina esa condición de carrera.
+
+**`main.cpp`.** Lee la configuración, abre el puerto y escucha en `0.0.0.0` (todas las interfaces, necesario para que otras máquinas lo alcancen en V2.0). Cualquier error de arranque se reporta y termina con código `1`, para que un script o Docker detecte la falla.
+
+**Pruebas.** `ApiServerTest` levanta el servidor real en un puerto libre y le hace peticiones con el cliente de httplib. Verifica que `/health` responda 200 con el JSON correcto y que una ruta inexistente dé 404. Son pruebas de integración HTTP: prueban el servicio como lo verá la web.
