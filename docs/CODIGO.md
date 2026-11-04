@@ -128,3 +128,34 @@ Se apagan las opciones de OpenSSL, zlib, brotli y zstd de httplib: no se usan en
 - índices fuera de rango;
 - archivos corruptos, truncados o sin encabezado;
 - la caída simulada a mitad de un `Append`.
+
+### U2.1 — Clave del árbol B y layout del nodo en disco
+
+**Archivos:** `include/tecflix/users/btree/btree_key.hpp`, `btree_node.hpp`, `src/btree/btree_key.cpp`, `btree_node.cpp`, `tests/btree_key_test.cpp`, `tests/btree_node_test.cpp`.
+
+**Repaso: qué es un árbol B.** Es un árbol de búsqueda balanceado pensado para disco. Cada nodo guarda muchas claves ordenadas (no solo una, como un árbol binario), y todas las hojas están a la misma profundidad. Con grado mínimo `t`:
+- cada nodo tiene como máximo `2t − 1` claves;
+- cada nodo, salvo la raíz, tiene como mínimo `t − 1` claves;
+- un nodo interno con `k` claves tiene `k + 1` hijos. El hijo `i` contiene las claves que están entre `clave[i−1]` y `clave[i]`.
+
+Como cada nodo ocupa una página de disco y tiene muchas claves, el árbol es muy bajo. Con `t = 32`, un millón de usuarios cabe en unos 4 niveles, así que una búsqueda lee unas 4 páginas.
+
+**`BTreeKey`.** Es una clave de 32 bytes que se compara byte a byte (`std::array` ya trae ese orden). Usamos una sola clase de árbol para los dos índices:
+- **Índice por id:** el número se guarda en **big-endian**, con el byte más significativo primero. Así el orden de los bytes coincide con el orden numérico. En little-endian, 256 (`00 01…`) quedaría antes que 1 (`01 00…`).
+- **Índice por username:** el texto se rellena con `\0`, que es el byte más pequeño. Así "ana" queda antes que "ana2", como en un diccionario. Se rechaza un texto con `\0` dentro, porque sería ambiguo con el relleno.
+
+**`BTreeNode`.** Es el nodo en memoria mientras se procesa una operación:
+- `keys`: las claves ordenadas;
+- `values`: el índice del registro en `users.dat`, uno por clave;
+- `children`: el número de página de cada hijo (vacío si es hoja);
+- `page`: la página donde vive el nodo.
+
+**Layout en disco.** Siempre ocupa el mismo tamaño, sin importar cuántas claves tenga:
+
+```
+is_leaf 1 B | key_count 4 B | keys[2t−1] × 32 B | values[2t−1] × 8 B | children[2t] × 8 B
+```
+
+Las posiciones no usadas se escriben en cero. Con `t = 32` son 3037 bytes, que caben en una página de 4096 bytes. Al leer se valida que `key_count` no supere el máximo (si lo supera, el archivo está corrupto). La cantidad de hijos se deduce: una hoja tiene 0 y un nodo interno tiene `key_count + 1`.
+
+**`LowerBound`.** Hace búsqueda binaria dentro del nodo (`std::lower_bound`) y devuelve la posición de la primera clave mayor o igual a la buscada. Esa posición sirve para tres cosas: saber si la clave está en el nodo (`HasKeyAt`), a qué hijo bajar, y dónde insertar.
