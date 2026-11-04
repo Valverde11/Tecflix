@@ -175,3 +175,33 @@ Las posiciones no usadas se escriben en cero. Con `t = 32` son 3037 bytes, que c
 - **No copiable**, porque es dueña del `std::fstream`.
 
 `UserDataFile` ahora solo se ocupa del formato (encabezado, registros e índices) y delega la E/S en `BinaryFile`. Esto es **composición**: `UserDataFile` *tiene un* `BinaryFile`. No se usó herencia, porque `UserDataFile` no *es un* archivo genérico y no debe exponer `ReadAt(offset)` crudo a quien lo use.
+
+### U2.2 + U2.3 — Archivo de páginas del índice (`PageFile`)
+
+**Archivos:** `include/tecflix/users/btree/page_file.hpp`, `src/btree/page_file.cpp`, `tests/page_file_test.cpp`.
+
+**Qué es.** El árbol B vive **en disco**, en un archivo dividido en páginas de 4096 bytes. Cada nodo ocupa una página y se lee o escribe completo. `PageFile` es la capa que traduce "página número N" a "posición `N × 4096` del archivo". El árbol (siguiente tarea) no sabe nada de bytes ni de posiciones: solo pide y guarda nodos.
+
+```
+página 0: encabezado
+  magic "TFBTREE1" | versión | grado t | tamaño de clave | página raíz | cantidad de páginas | primera página libre
+página 1, 2, ...: nodos o páginas libres
+```
+
+**¿Por qué 4096 bytes?** Es el tamaño de bloque típico de los sistemas de archivos y de una página de memoria. Leer un nodo cuesta un único acceso a disco. El grado máximo (`kMaxDegree = 32`) es el mayor cuyo nodo (63 claves, 3037 bytes) cabe en una página. Un `static_assert` lo verifica **en tiempo de compilación**: si alguien cambia los tamaños y deja de caber, el código no compila.
+
+**Página 0 = "sin página".** Como la página 0 siempre es el encabezado, el número 0 nunca apunta a un nodo y sirve como valor nulo (`kNoPage`), igual que `nullptr` en memoria.
+
+**Creación.** Un archivo nuevo arranca con el encabezado y una raíz hoja vacía en la página 1. Así el árbol siempre tiene raíz y no hay que tratar el árbol vacío como caso especial.
+
+**Lista de páginas libres.** Cuando el árbol fusiona dos nodos al borrar, una página queda sin uso. En vez de dejar un hueco en el archivo, `FreePage` la agrega a una **lista enlazada guardada en el propio disco**: la página libre guarda una marca `0xFF` y el número de la siguiente página libre, y el encabezado guarda la primera. `AllocatePage` reutiliza primero una página libre (LIFO, como una pila) y solo agranda el archivo si no hay ninguna. La marca `0xFF` permite detectar el error de leer una página libre como si fuera un nodo, porque un nodo real empieza con 0 o 1.
+
+**Validaciones** (todas lanzan `StorageError`):
+- archivo sin encabezado, o con número mágico, versión o tamaño de clave distintos;
+- índice abierto con un grado distinto al que se usó al crearlo: los nodos tendrían otro tamaño y se leería basura;
+- archivo truncado;
+- página 0, una página inexistente, o leer una página libre como nodo.
+
+Además: liberar la raíz es un error de programación (`std::logic_error`), y un grado fuera de 2–32 lanza `std::invalid_argument`.
+
+**Pruebas.** Cubren el archivo nuevo, la persistencia de nodos y de la lista libre tras reabrir, la reutilización de páginas en orden LIFO, las páginas inválidas, los grados inválidos o distintos, un archivo ajeno, y que un nodo de grado máximo quepa en su página.
