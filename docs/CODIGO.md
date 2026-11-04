@@ -205,3 +205,59 @@ página 1, 2, ...: nodos o páginas libres
 Además: liberar la raíz es un error de programación (`std::logic_error`), y un grado fuera de 2–32 lanza `std::invalid_argument`.
 
 **Pruebas.** Cubren el archivo nuevo, la persistencia de nodos y de la lista libre tras reabrir, la reutilización de páginas en orden LIFO, las páginas inválidas, los grados inválidos o distintos, un archivo ajeno, y que un nodo de grado máximo quepa en su página.
+
+### U2.4 + U2.5 + U2.7 — Búsqueda, inserción con división y verificación de invariantes
+
+**Archivos:** `include/tecflix/users/btree/btree.hpp`, `src/btree/btree.cpp`, `tests/btree_test.cpp`.
+
+Se sigue el algoritmo de Cormen, Leiserson, Rivest y Stein, *Introduction to Algorithms*, capítulo 18. Conviene tenerlo a mano para la defensa.
+
+**`Search(key)`.** Empieza en la raíz y en cada nodo:
+1. hace una búsqueda binaria (`LowerBound`) para encontrar la primera clave mayor o igual a la buscada;
+2. si es igual, devuelve su valor (el índice del registro);
+3. si no, y el nodo es hoja, la clave no existe;
+4. si no, baja al hijo en esa posición, que contiene justo las claves entre las dos claves vecinas.
+
+Lee una página por nivel. Costo: O(log_t n) lecturas de disco.
+
+**`Insert(key, value)`.** Primero busca la clave. Si ya existe devuelve `false` **sin tocar el árbol**: el índice es único (dos usuarios no pueden tener el mismo id ni el mismo username) y una operación rechazada no debe dividir nodos.
+
+La idea central es **dividir en la bajada** (*split proactivo*): mientras baja hacia la hoja, si el hijo al que va a entrar está lleno (`2t − 1` claves), lo divide **antes** de entrar. Así, al llegar a la hoja siempre hay espacio, y nunca hay que volver hacia arriba a corregir padres llenos.
+
+**`SplitChild(padre, i, hijo)`.** El hijo lleno tiene `2t − 1` claves. Se parte en tres:
+
+```
+hijo lleno (t = 2):   [ 10 | 20 | 30 ]
+                            ↓ la mediana (20) sube al padre
+padre:          [ ... | 20 | ... ]
+                     /       \
+            hijo [10]         hermano nuevo [30]
+```
+
+- las `t − 1` claves menores se quedan en el hijo;
+- la clave mediana (posición `t − 1`) sube al padre, en la posición `i`;
+- las `t − 1` claves mayores (y sus hijos, si no es hoja) pasan a un hermano nuevo en una página nueva, que se enlaza como hijo `i + 1` del padre.
+
+Se escriben las tres páginas. Después de dividir, se compara la clave con la mediana que subió para saber a cuál de las dos mitades bajar.
+
+**¿Cómo crece el árbol?** Solo cuando la **raíz** está llena: se crea una raíz nueva vacía con la vieja como único hijo, y se divide la vieja. Es la única forma en que aumenta la altura, y por eso **todas las hojas quedan siempre a la misma profundidad**. Un árbol B crece por arriba, no por abajo.
+
+**`CheckInvariants()` (U2.7).** Recorre todo el árbol y verifica cada regla. Si alguna falla, lanza `std::logic_error` indicando cuál y en qué página. Las reglas son:
+- ningún nodo tiene más de `2t − 1` claves, y ninguno salvo la raíz tiene menos de `t − 1`;
+- la raíz interna no está vacía;
+- las claves de cada nodo están estrictamente ordenadas (sin repetidas);
+- cada clave está dentro del rango que le corresponde. El hijo `i` debe tener claves mayores que `clave[i−1]` y menores que `clave[i]`; ese rango (`KeyRange`) se pasa hacia abajo en la recursión;
+- un nodo interno con `k` claves tiene `k + 1` hijos;
+- todas las hojas están a la misma profundidad.
+
+Devuelve el total de claves, y las pruebas lo comparan con lo insertado. Sirve para probar y para depurar: si una operación rompe el árbol, se detecta en el acto.
+
+**Pruebas.** Usan **grado pequeño** (`t = 2` y `t = 3`), porque con nodos de 1 a 3 claves unas pocas inserciones ya provocan divisiones en varios niveles. Se prueba:
+- árbol vacío y claves duplicadas;
+- la división de la raíz (la altura pasa de 1 a 2);
+- 2000 inserciones en orden y en orden aleatorio (con semilla fija para que sea reproducible), verificando invariantes y encontrando cada clave;
+- claves de username;
+- persistencia: cerrar, reabrir y seguir funcionando;
+- que con `t = 32` 2000 claves quepan en 3 niveles como máximo.
+
+**Observación para V2.0.** Cada escritura hace `flush()`, así que insertar miles de claves tarda 1–2 s en las pruebas. Es una oportunidad de optimización medible (por ejemplo, un caché de páginas o agrupar escrituras), que se puede usar para las 5 mejoras de rendimiento que pide V2.0.
