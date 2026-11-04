@@ -23,6 +23,8 @@ add_library(user_service_core
     src/config.cpp
     src/environment.cpp
     src/health_controller.cpp
+    src/storage/byte_codec.cpp
+    src/storage/user_record.cpp
 )
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core
