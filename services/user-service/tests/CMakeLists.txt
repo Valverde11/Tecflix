@@ -2,6 +2,7 @@ add_executable(user_service_tests
     api_server_test.cpp
     byte_codec_test.cpp
     config_test.cpp
+    user_data_file_test.cpp
     user_record_test.cpp
 )
 target_link_libraries(user_service_tests PRIVATE
