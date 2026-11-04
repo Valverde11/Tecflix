@@ -88,3 +88,43 @@ Se apagan las opciones de OpenSSL, zlib, brotli y zstd de httplib: no se usan en
 **`UserRecord`.** Es un `struct` porque es un objeto de datos puro, sin reglas propias. Las validaciones de negocio (formato del correo, unicidad del username) irán en `UserService`. `kSerializedSize` se calcula a partir de las constantes de cada campo, así que si cambia un tamaño, todo lo demás se ajusta solo. `operator==` usa `std::tie` para comparar todos los campos; las pruebas lo usan para verificar que escribir y leer devuelve exactamente el mismo registro.
 
 **`StorageError`.** Es una excepción propia para errores de almacenamiento. Separarla de `std::invalid_argument` permite que la capa HTTP responda 500 (falla del servidor) en un caso y 400 (datos inválidos) en el otro.
+
+### U1.3 – U1.5 — Archivo binario de usuarios (`UserDataFile`)
+
+**Archivos:** `include/tecflix/users/storage/user_data_file.hpp`, `src/storage/user_data_file.cpp`, `tests/user_data_file_test.cpp`, `tests/temp_directory.hpp`.
+
+**Formato del archivo `users.dat`:**
+
+```
+[ encabezado 24 bytes ][ registro 0 ][ registro 1 ] ... [ registro N-1 ]
+  magic   8 B  "TFUSRDAT" — identifica el archivo
+  versión 4 B  1 — permite cambiar el formato en el futuro
+  tamaño  4 B  177 — tamaño de cada registro
+  N       8 B  cantidad de registros
+```
+
+**Índice del registro.** Cada usuario se identifica por su índice: 0, 1, 2… Su posición en bytes es `24 + índice × 177` (`OffsetOf`). El árbol B guardará `clave → índice`, así que encontrar un usuario cuesta lo que cuesta buscar en el árbol más un único acceso al archivo de datos. Como el borrado es lógico (flag `deleted`), un registro nunca se mueve y su índice nunca cambia; por eso el árbol no tiene que actualizarse cuando se borra el dato.
+
+**Operaciones:**
+- `Append`: escribe el registro al final y después actualiza el contador del encabezado.
+- `ReadAt` / `WriteAt`: leen o sobrescriben el registro de un índice. Si el índice no existe, lanzan `std::out_of_range`.
+- El constructor abre el archivo, o lo crea vacío con su encabezado (y las carpetas que falten) si no existe.
+
+**Validaciones al abrir** (todas lanzan `StorageError`):
+- archivo menor que el encabezado;
+- número mágico distinto: se abrió un archivo que no es de usuarios;
+- versión o tamaño de registro distintos: el formato cambió;
+- archivo más corto de lo que dice el contador: se perdieron registros (truncado).
+
+**Tolerancia a caídas.** En `Append`, el registro se escribe **antes** que el encabezado. Si el programa se cae entre las dos escrituras, el contador sigue siendo el anterior: el registro a medias queda fuera del archivo y el próximo `Append` lo sobrescribe. Por eso se aceptan bytes **de más** al final, pero no bytes **de menos**. La prueba `IgnoresIncompleteRecordFromInterruptedAppend` simula ese caso.
+
+**`flush()` en cada escritura.** Asegura que los datos lleguen al sistema operativo antes de responder al cliente. Después de cada lectura o escritura se revisa el estado del stream; si falló, se limpia con `clear()` para que las operaciones siguientes no queden bloqueadas, y se lanza `StorageError`.
+
+**No copiable.** La clase es dueña del `std::fstream`. Dos copias escribiendo el mismo archivo lo corromperían.
+
+**Pruebas.** `TempDirectory` crea una carpeta temporal por prueba y la borra al terminar (RAII). Se prueba:
+- escribir 500 registros, cerrar, reabrir y leerlos todos (persistencia);
+- sobrescribir uno sin tocar los demás;
+- índices fuera de rango;
+- archivos corruptos, truncados o sin encabezado;
+- la caída simulada a mitad de un `Append`.
