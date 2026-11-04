@@ -1,6 +1,7 @@
 #include "tecflix/users/storage/byte_codec.hpp"
 
 #include <stdexcept>
+#include <utility>
 
 #include "tecflix/users/storage/storage_error.hpp"
 
@@ -45,7 +46,7 @@ void ByteWriter::WriteLittleEndian(std::uint64_t value,
   }
 }
 
-ByteReader::ByteReader(const Bytes& bytes) : bytes_(bytes) {}
+ByteReader::ByteReader(Bytes bytes) : bytes_(std::move(bytes)) {}
 
 std::uint8_t ByteReader::ReadUint8() {
   return static_cast<std::uint8_t>(ReadLittleEndian(sizeof(std::uint8_t)));

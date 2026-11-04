@@ -37,9 +37,12 @@ class ByteWriter {
 
 // Lee en el mismo orden y formato que ByteWriter. Lanza StorageError si se
 // intenta leer más allá del final, lo que indica datos corruptos.
+// Es dueño de sus bytes (no guarda una referencia), así puede construirse con
+// un buffer temporal, p. ej. ByteReader reader(file.ReadAt(...)), sin riesgo
+// de leer memoria ya liberada.
 class ByteReader {
  public:
-  explicit ByteReader(const Bytes& bytes);
+  explicit ByteReader(Bytes bytes);
 
   std::uint8_t ReadUint8();
   std::uint32_t ReadUint32();
@@ -62,7 +65,7 @@ class ByteReader {
   std::uint64_t ReadLittleEndian(std::size_t byte_count);
   void RequireAvailable(std::size_t byte_count) const;
 
-  const Bytes& bytes_;
+  Bytes bytes_;
   std::size_t position_ = 0;
 };
 

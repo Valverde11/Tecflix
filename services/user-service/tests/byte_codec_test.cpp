@@ -53,6 +53,12 @@ TEST(ByteCodecTest, RejectsStringLongerThanField) {
   EXPECT_THROW(writer.WriteFixedString("abcde", 4), std::invalid_argument);
 }
 
+TEST(ByteCodecTest, ReaderCanBeBuiltFromTemporaryBuffer) {
+  ByteReader reader(Bytes({0x2A, 0x00, 0x00, 0x00}));
+
+  EXPECT_EQ(reader.ReadUint32(), 42u);
+}
+
 TEST(ByteCodecTest, ReadingPastTheEndThrowsStorageError) {
   const Bytes bytes = {0x01, 0x02};
   ByteReader reader(bytes);
