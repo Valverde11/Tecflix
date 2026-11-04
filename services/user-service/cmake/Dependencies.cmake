@@ -21,3 +21,15 @@ FetchContent_Declare(nlohmann_json
 )
 
 FetchContent_MakeAvailable(httplib nlohmann_json)
+
+if(USER_SERVICE_BUILD_TESTS)
+    # En Windows, GoogleTest debe usar el mismo runtime de C que el resto del proyecto.
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.17.0
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(googletest)
+endif()
