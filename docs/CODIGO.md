@@ -120,6 +120,8 @@ Se apagan las opciones de OpenSSL, zlib, brotli y zstd de httplib: no se usan en
 
 **`flush()` en cada escritura.** Asegura que los datos lleguen al sistema operativo antes de responder al cliente. Después de cada lectura o escritura se revisa el estado del stream; si falló, se limpia con `clear()` para que las operaciones siguientes no queden bloqueadas, y se lanza `StorageError`.
 
+> **Actualización (refactor U2.2):** la lectura y escritura de bajo nivel (`seek`, `read`, `write`, `flush`, `clear`) se movió a la clase `BinaryFile`, que comparten `UserDataFile` y el archivo del árbol B. Ver "Refactor — `BinaryFile`".
+
 **No copiable.** La clase es dueña del `std::fstream`. Dos copias escribiendo el mismo archivo lo corromperían.
 
 **Pruebas.** `TempDirectory` crea una carpeta temporal por prueba y la borra al terminar (RAII). Se prueba:
@@ -159,3 +161,16 @@ is_leaf 1 B | key_count 4 B | keys[2t−1] × 32 B | values[2t−1] × 8 B | chi
 Las posiciones no usadas se escriben en cero. Con `t = 32` son 3037 bytes, que caben en una página de 4096 bytes. Al leer se valida que `key_count` no supere el máximo (si lo supera, el archivo está corrupto). La cantidad de hijos se deduce: una hoja tiene 0 y un nodo interno tiene `key_count + 1`.
 
 **`LowerBound`.** Hace búsqueda binaria dentro del nodo (`std::lower_bound`) y devuelve la posición de la primera clave mayor o igual a la buscada. Esa posición sirve para tres cosas: saber si la clave está en el nodo (`HasKeyAt`), a qué hijo bajar, y dónde insertar.
+
+### Refactor — `BinaryFile` (acceso aleatorio compartido)
+
+**Archivos:** `include/tecflix/users/storage/binary_file.hpp`, `src/storage/binary_file.cpp`, `tests/binary_file_test.cpp`; se simplificó `user_data_file.cpp`.
+
+**Por qué.** El archivo del árbol B necesita exactamente las mismas operaciones que `UserDataFile`: abrir o crear un archivo y leer o escribir bytes en una posición. Copiar ese código sería duplicación, que cuenta como mala práctica. Por eso se extrajo a una clase con una sola responsabilidad: acceso aleatorio a un archivo binario.
+
+**Qué hace:**
+- **Constructor.** Si el archivo no existe, lo crea vacío (con sus carpetas) y lo recuerda en `WasCreated()`. Así quien lo usa sabe si debe escribir un encabezado nuevo o validar el existente.
+- **`ReadAt` / `WriteAt`.** Hacen `seek` a la posición y leen o escriben. Después de escribir hacen `flush()`. Si algo falla, limpian el estado del stream y lanzan `StorageError`.
+- **No copiable**, porque es dueña del `std::fstream`.
+
+`UserDataFile` ahora solo se ocupa del formato (encabezado, registros e índices) y delega la E/S en `BinaryFile`. Esto es **composición**: `UserDataFile` *tiene un* `BinaryFile`. No se usó herencia, porque `UserDataFile` no *es un* archivo genérico y no debe exponer `ReadAt(offset)` crudo a quien lo use.

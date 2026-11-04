@@ -1,5 +1,6 @@
 add_executable(user_service_tests
     api_server_test.cpp
+    binary_file_test.cpp
     btree_key_test.cpp
     btree_node_test.cpp
     byte_codec_test.cpp
