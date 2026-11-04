@@ -20,6 +20,7 @@ endif()
 # La lógica vive en una librería para que las pruebas la usen sin pasar por main().
 add_library(user_service_core
     src/api_server.cpp
+    src/btree/btree.cpp
     src/btree/btree_key.cpp
     src/btree/btree_node.cpp
     src/btree/page_file.cpp
