@@ -58,3 +58,33 @@ Se apagan las opciones de OpenSSL, zlib, brotli y zstd de httplib: no se usan en
 **`main.cpp`.** Lee la configuración, abre el puerto y escucha en `0.0.0.0` (todas las interfaces, necesario para que otras máquinas lo alcancen en V2.0). Cualquier error de arranque se reporta y termina con código `1`, para que un script o Docker detecte la falla.
 
 **Pruebas.** `ApiServerTest` levanta el servidor real en un puerto libre y le hace peticiones con el cliente de httplib. Verifica que `/health` responda 200 con el JSON correcto y que una ruta inexistente dé 404. Son pruebas de integración HTTP: prueban el servicio como lo verá la web.
+
+### U1.1 + U1.2 — Registro de usuario de tamaño fijo y su formato binario
+
+**Archivos:** `include/tecflix/users/storage/` (`storage_error.hpp`, `byte_codec.hpp`, `user_record.hpp`), `src/storage/` (`byte_codec.cpp`, `user_record.cpp`), `tests/byte_codec_test.cpp`, `tests/user_record_test.cpp`.
+
+**Por qué tamaño fijo.** El enunciado pide guardar los usuarios en un archivo binario y buscarlos con un árbol B en disco. Si todos los registros miden lo mismo, la posición del registro número `i` se calcula directamente como `encabezado + i × tamaño`, sin recorrer el archivo. El árbol B solo necesita guardar ese número `i` para llegar al usuario con un único acceso a disco.
+
+**Layout del registro (177 bytes):**
+
+| Campo | Bytes | Nota |
+|---|---|---|
+| `id` | 8 | entero sin signo |
+| `username` | 32 | texto rellenado con `\0` |
+| `email` | 64 | texto rellenado con `\0` |
+| `password_hash` | 32 | hash de la contraseña (nunca texto plano) |
+| `salt` | 16 | sal aleatoria por usuario |
+| `quota_bytes` | 8 | cuota fija |
+| `used_bytes` | 8 | espacio usado |
+| `created_at` | 8 | segundos desde 1970 (UTC), con signo |
+| `deleted` | 1 | borrado lógico: 1 = borrado |
+
+**`ByteWriter` / `ByteReader`.** Convierten valores a bytes y de vuelta, con un formato que no depende de la máquina:
+- **Little-endian explícito.** Cada entero se escribe byte por byte, del menos significativo al más significativo, con desplazamientos de bits. Escribir el `struct` en crudo (`reinterpret_cast`) dependería del compilador (relleno entre campos, orden de bytes). Así, un archivo creado en Windows se lee igual en Linux, que es el sistema del CI.
+- **Cadenas en campos fijos.** Se rellenan con `\0` hasta el tamaño del campo. Si el texto no cabe, se lanza `std::invalid_argument` en vez de recortarlo en silencio. Al leer, el texto termina en el primer `\0`.
+- **Lectura segura.** Si se intenta leer más allá del final, se lanza `StorageError`: los datos están incompletos o corruptos.
+- Se reutilizarán para serializar los nodos del árbol B.
+
+**`UserRecord`.** Es un `struct` porque es un objeto de datos puro, sin reglas propias. Las validaciones de negocio (formato del correo, unicidad del username) irán en `UserService`. `kSerializedSize` se calcula a partir de las constantes de cada campo, así que si cambia un tamaño, todo lo demás se ajusta solo. `operator==` usa `std::tie` para comparar todos los campos; las pruebas lo usan para verificar que escribir y leer devuelve exactamente el mismo registro.
+
+**`StorageError`.** Es una excepción propia para errores de almacenamiento. Separarla de `std::invalid_argument` permite que la capa HTTP responda 500 (falla del servidor) en un caso y 400 (datos inválidos) en el otro.
