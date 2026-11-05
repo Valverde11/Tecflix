@@ -29,6 +29,7 @@ class HttpTestServer : public ::testing::Test {
   static constexpr std::uint32_t kSmallDegree = 2;
   static constexpr std::int64_t kNow = 1'700'000'000;
   static constexpr const char* kNowText = "2023-11-14T22:13:20Z";
+  static constexpr const char* kCorsOrigin = "http://web.tecflix.test";
   static constexpr const char* kAuthSecret =
       "secreto-de-pruebas-con-32-bytes-o-mas";
   static constexpr const char* kServiceSecret =
@@ -87,7 +88,7 @@ class HttpTestServer : public ::testing::Test {
   AuthService auth_{kAuthSecret, [] { return kNow; }};
   ServiceTokenVerifier service_tokens_{kServiceSecret};
   UserController controller_{users_, auth_, service_tokens_};
-  ApiServer server_{controller_};
+  ApiServer server_{controller_, kCorsOrigin};
   int port_ = 0;
   std::thread listener_;
 };

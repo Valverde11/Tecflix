@@ -26,7 +26,7 @@ int main() {
     const AuthService auth(config.AuthSecret());
     const ServiceTokenVerifier service_tokens(config.ServiceSecret());
     UserController controller(users, auth, service_tokens);
-    ApiServer server(controller);
+    ApiServer server(controller, config.CorsOrigin());
 
     if (!server.Bind(kListenHost, config.Port())) {
       std::cerr << "No se pudo abrir el puerto " << config.Port() << '\n';

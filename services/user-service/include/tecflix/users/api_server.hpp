@@ -19,8 +19,9 @@ class ApiServer {
   // cuerpos enormes y cualquiera podría llenar la memoria del servidor.
   static constexpr std::size_t kMaxBodyBytes = 16 * 1024;
 
-  // users debe vivir más que este servidor.
-  explicit ApiServer(UserController& users);
+  // users debe vivir más que este servidor. cors_origin es el único origen web
+  // que el navegador dejará llamar a esta API.
+  ApiServer(UserController& users, const std::string& cors_origin);
 
   ApiServer(const ApiServer&) = delete;
   ApiServer& operator=(const ApiServer&) = delete;
@@ -35,6 +36,8 @@ class ApiServer {
   void Stop();
 
  private:
+  void ConfigureCors(const std::string& origin);
+
   httplib::Server server_;
   HealthController health_controller_;
 };
