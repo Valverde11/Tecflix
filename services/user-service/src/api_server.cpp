@@ -1,8 +1,23 @@
 #include "tecflix/users/api_server.hpp"
 
+#include <exception>
+
+#include "tecflix/users/api_error.hpp"
+
 namespace tecflix::users {
 
-ApiServer::ApiServer() { health_controller_.RegisterRoutes(server_); }
+ApiServer::ApiServer() {
+  server_.set_exception_handler([](const httplib::Request&,
+                                   httplib::Response& response,
+                                   std::exception_ptr error) {
+    ApiErrors::WriteException(response, error);
+  });
+  server_.set_error_handler(
+      [](const httplib::Request&, httplib::Response& response) {
+        ApiErrors::FillEmptyBody(response);
+      });
+  health_controller_.RegisterRoutes(server_);
+}
 
 bool ApiServer::Bind(const std::string& host, int port) {
   return server_.bind_to_port(host, port);

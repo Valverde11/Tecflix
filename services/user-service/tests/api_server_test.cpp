@@ -53,6 +53,7 @@ TEST_F(ApiServerTest, UnknownRouteReturnsNotFound) {
 
   ASSERT_TRUE(response);
   EXPECT_EQ(response->status, 404);
+  EXPECT_EQ(nlohmann::json::parse(response->body)["error"], "not_found");
 }
 
 }  // namespace
