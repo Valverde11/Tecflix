@@ -302,3 +302,23 @@ Los nombres de los casos son los de Cormen, cap. 18.3. En cada nodo, `RemoveFrom
 - **Prueba basada en modelo:** 3000 operaciones aleatorias (60 % insertar, 40 % borrar) se aplican a la vez al árbol y a un `std::map` de la librería estándar, que sirve como "respuesta correcta". Después de cada operación deben devolver lo mismo, y al final contener exactamente lo mismo. Esta prueba encuentra combinaciones de casos que a mano no se le ocurrirían a nadie.
 - **Reutilización de páginas:** llenar, vaciar y volver a llenar con 1000 claves no agranda el archivo.
 - **Persistencia:** los borrados se mantienen después de reabrir.
+
+### U2.9 — Índice secundario por username
+
+**Qué problema resuelve.** Al iniciar sesión el usuario da su username, no su id. Sin este índice habría que recorrer todo `users.dat` (O(n)). Con un segundo árbol B, la búsqueda es O(log n), igual que por id.
+
+**Por qué no hay una clase nueva.** `BTree` no sabe qué significan sus claves: compara 32 bytes y devuelve un número. El índice por username es otra instancia de `BTree`, en otro archivo, con claves creadas con `BTreeKey::FromString`. Ambos árboles guardan el mismo valor: el índice del registro en `users.dat`. Mantenerlos sincronizados le corresponde a `UserRepository` (U3.1), así que esta tarea demuestra con pruebas que la pieza sirve para ese uso.
+
+**Garantía en compilación.** `username_index_test.cpp` tiene un `static_assert(UserRecord::kUsernameSize <= BTreeKey::kSize)`. Si alguien agranda el campo del registro y olvida la clave, las pruebas dejan de compilar, en lugar de fallar con usuarios reales.
+
+**Decisión pendiente.** Las claves distinguen mayúsculas: `Ana` y `ana` son usuarios distintos. Si se quiere evitar, se normaliza el username antes de crear la clave (U3.3); el árbol no cambia.
+
+**Pruebas:**
+- **Búsqueda y duplicados:** encuentra el registro por username y, ante un duplicado, conserva el primero. Esto será la base de la validación "username único".
+- **Claves difíciles:** usernames de 32 bytes que difieren solo en el último byte, y prefijos comunes (`ana` y `ana2`).
+- **Renombrar:** es quitar la clave vieja e insertar la nueva con el mismo valor; el registro no se mueve en `users.dat`.
+- **Independencia:** cambiar el índice por username no afecta al índice por id, incluso después de reabrir.
+- **UTF-8:** `ñandú` queda después de `zeta` porque los bytes se comparan sin signo.
+- **Prueba basada en modelo:** 2000 operaciones aleatorias con claves de texto contra un `std::map`. Luego se reabre el archivo y se verifican invariantes y contenido.
+
+**Error útil durante el desarrollo.** La primera versión de la prueba reabría el archivo con el grado por defecto y falló con "El índice fue creado con otro grado". El árbol hizo lo correcto: un archivo creado con un grado no debe interpretarse con otro. Se corrigió la prueba, no el código.
