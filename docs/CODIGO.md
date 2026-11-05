@@ -480,3 +480,25 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 - **Vencimiento:** válido un segundo antes de `exp`, inválido justo en `exp`.
 - **Contenido inválido con firma correcta:** 14 variantes, como campos ausentes, tipos equivocados o un id que no cabe en 64 bits.
 - **`Config`:** las pruebas de puerto ahora incluyen el secreto. Sin eso pasarían por la razón equivocada, porque esperan la misma excepción que produce la falta del secreto.
+
+### U3.6 — Cuota: consultar, reservar y liberar espacio
+
+**Qué hace.** `UserService` suma tres operaciones: `GetQuota` devuelve `{quota_bytes, used_bytes}`, `ReserveSpace` suma bytes al espacio usado y `ReleaseSpace` los resta. Son la lógica detrás de `GET /api/users/{id}/quota` y `POST /api/users/{id}/quota/usage` (`SPEC.md` 4.4), que se crean en U4. El enunciado pide que al alcanzar la cuota no se pueda subir: esa regla vive aquí, en el servidor, porque el bloqueo de la web se puede saltar llamando a la API directamente.
+
+**Llenar la cuota exacta se permite.** Un usuario con 1 GB de cuota puede usar exactamente 1 GB; un byte más se rechaza con `kQuotaExceeded`. Una operación rechazada no escribe nada.
+
+**Por qué se compara con lo disponible.** La condición es `bytes > quota - used`, no `used + bytes > quota`. `bytes` viene de otro servicio y es un entero sin signo de 64 bits: si es enorme, `used + bytes` se pasa del máximo, da la vuelta a un número pequeño y la validación lo aceptaría. En cambio `quota - used` no puede dar la vuelta, porque `used` nunca supera `quota`. Una prueba usa justo un valor cuya suma da 1.
+
+**Liberar de más es un error.** `ReleaseSpace` rechaza con `kReleaseExceedsUsage` si se pide liberar más de lo usado. Restar sin revisar daría la vuelta a un número gigante y dejaría al usuario sin cuota. Ajustar a cero evitaría eso, pero escondería una liberación repetida o un tamaño mal reportado, y el espacio usado quedaría mal sin que nadie lo notara.
+
+**Se usa la cuota del registro, no la constante.** La comparación lee `record.quota_bytes`: la constante `kQuotaBytes` solo decide qué valor recibe un usuario al registrarse.
+
+**`LoadUser`.** "Buscar el usuario o lanzar `kUserNotFound`" se repetía en `Get` y `Update`, y la cuota lo necesitaba tres veces más; por eso se extrajo a un método privado.
+
+**El repositorio no cambió.** `UserRepository::Update` ya guarda el registro completo y, como username y email no cambian, no toca los índices.
+
+**Limitaciones conocidas.**
+- Reservar lee y luego escribe: dos subidas simultáneas podrían pasar la validación y perder una suma. Se resuelve en U4.5, con el mutex alrededor de la operación completa.
+- Si un servicio reintenta una reserva tras un error de red, los bytes se cuentan dos veces: la operación no es idempotente. Evitarlo exigiría guardar qué videos se contaron, y eso no cabe en el registro actual.
+
+**Pruebas:** 12 de `UserService`: cuota inicial, acumulación persistida, llenado exacto, un byte de más, cuota llena, desbordamiento de enteros, liberación parcial y total, liberar de más sin cambiar nada, independencia entre usuarios, login después de reservar y usuario inexistente.

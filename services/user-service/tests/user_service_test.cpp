@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -326,6 +327,118 @@ TEST_F(UserServiceTest, AuthenticateTakesAsLongForAnUnknownUser) {
   });
 
   EXPECT_GT(unknown_user / wrong_password, kMinTimingRatio);
+}
+
+TEST_F(UserServiceTest, NewUserHasTheFullQuotaAvailable) {
+  const UserProfile ana = service_.Register(Ana());
+
+  const QuotaUsage usage = service_.GetQuota(ana.id);
+
+  EXPECT_EQ(usage.quota_bytes, UserService::kQuotaBytes);
+  EXPECT_EQ(usage.used_bytes, 0u);
+}
+
+TEST_F(UserServiceTest, ReserveSpaceAccumulatesAndPersists) {
+  const UserProfile ana = service_.Register(Ana());
+
+  service_.ReserveSpace(ana.id, kUsedBytes);
+  const QuotaUsage usage = service_.ReserveSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(usage.used_bytes, 2 * kUsedBytes);
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes, 2 * kUsedBytes);
+  EXPECT_EQ(repository_.FindById(ana.id)->used_bytes, 2 * kUsedBytes);
+}
+
+TEST_F(UserServiceTest, ReserveSpaceAllowsFillingTheQuotaExactly) {
+  const UserProfile ana = service_.Register(Ana());
+
+  const QuotaUsage usage =
+      service_.ReserveSpace(ana.id, UserService::kQuotaBytes);
+
+  EXPECT_EQ(usage.used_bytes, UserService::kQuotaBytes);
+}
+
+TEST_F(UserServiceTest, ReserveSpaceRejectsOneByteOverTheQuota) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, kUsedBytes);
+  const std::uint64_t available = UserService::kQuotaBytes - kUsedBytes;
+
+  EXPECT_EQ(ErrorOf([&] { service_.ReserveSpace(ana.id, available + 1); }),
+            UserErrorCode::kQuotaExceeded);
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes, kUsedBytes);
+}
+
+TEST_F(UserServiceTest, ReserveSpaceRejectsAnyBytesWhenTheQuotaIsFull) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, UserService::kQuotaBytes);
+
+  EXPECT_EQ(ErrorOf([&] { service_.ReserveSpace(ana.id, 1); }),
+            UserErrorCode::kQuotaExceeded);
+}
+
+TEST_F(UserServiceTest, ReserveSpaceIsNotFooledByIntegerOverflow) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, kUsedBytes);
+  // Sumado a lo usado da la vuelta a un número pequeño que cabría en la cuota.
+  const std::uint64_t wraps_around =
+      std::numeric_limits<std::uint64_t>::max() - kUsedBytes + 2;
+
+  EXPECT_EQ(ErrorOf([&] { service_.ReserveSpace(ana.id, wraps_around); }),
+            UserErrorCode::kQuotaExceeded);
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes, kUsedBytes);
+}
+
+TEST_F(UserServiceTest, ReleaseSpaceFreesWhatWasReserved) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, UserService::kQuotaBytes);
+
+  const QuotaUsage usage = service_.ReleaseSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(usage.used_bytes, UserService::kQuotaBytes - kUsedBytes);
+  EXPECT_EQ(service_.ReserveSpace(ana.id, kUsedBytes).used_bytes,
+            UserService::kQuotaBytes);
+}
+
+TEST_F(UserServiceTest, ReleaseSpaceCanEmptyTheUsage) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(service_.ReleaseSpace(ana.id, kUsedBytes).used_bytes, 0u);
+}
+
+TEST_F(UserServiceTest, ReleaseSpaceRejectsMoreThanWhatIsUsed) {
+  const UserProfile ana = service_.Register(Ana());
+  service_.ReserveSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(ErrorOf([&] { service_.ReleaseSpace(ana.id, kUsedBytes + 1); }),
+            UserErrorCode::kReleaseExceedsUsage);
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes, kUsedBytes);
+}
+
+TEST_F(UserServiceTest, QuotaIsIndependentForEachUser) {
+  const UserProfile ana = service_.Register(Ana());
+  const UserProfile beto = service_.Register(Beto());
+
+  service_.ReserveSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(service_.GetQuota(beto.id).used_bytes, 0u);
+}
+
+TEST_F(UserServiceTest, ReservingSpaceKeepsTheLoginWorking) {
+  const UserProfile ana = service_.Register(Ana());
+
+  service_.ReserveSpace(ana.id, kUsedBytes);
+
+  EXPECT_EQ(service_.Authenticate("Ana", kPassword).used_bytes, kUsedBytes);
+}
+
+TEST_F(UserServiceTest, QuotaOperationsReportUnknownUser) {
+  EXPECT_EQ(ErrorOf([&] { service_.GetQuota(kMissingId); }),
+            UserErrorCode::kUserNotFound);
+  EXPECT_EQ(ErrorOf([&] { service_.ReserveSpace(kMissingId, kUsedBytes); }),
+            UserErrorCode::kUserNotFound);
+  EXPECT_EQ(ErrorOf([&] { service_.ReleaseSpace(kMissingId, kUsedBytes); }),
+            UserErrorCode::kUserNotFound);
 }
 
 TEST(UserServiceClockTest, SystemClockReturnsACurrentTimestamp) {
