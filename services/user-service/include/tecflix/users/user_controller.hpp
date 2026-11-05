@@ -2,8 +2,11 @@
 
 #include <httplib.h>
 
+#include <cstdint>
+
 #include "tecflix/users/domain/auth_service.hpp"
 #include "tecflix/users/domain/user_service.hpp"
+#include "tecflix/users/security/service_token_verifier.hpp"
 
 namespace tecflix::users {
 
@@ -17,9 +20,12 @@ class UserController {
   static constexpr const char* kMeRoute = "/api/users/me";
   static constexpr const char* kUserRoute = "/api/users/:id";
   static constexpr const char* kQuotaRoute = "/api/users/:id/quota";
+  static constexpr const char* kQuotaUsageRoute = "/api/users/:id/quota/usage";
+  static constexpr const char* kServiceTokenHeader = "X-Service-Token";
 
-  // users y auth deben vivir más que este controlador.
-  UserController(UserService& users, const AuthService& auth);
+  // Los parámetros deben vivir más que este controlador.
+  UserController(UserService& users, const AuthService& auth,
+                 const ServiceTokenVerifier& service_tokens);
 
   void RegisterRoutes(httplib::Server& server);
 
@@ -33,6 +39,7 @@ class UserController {
   TokenClaims RequireToken(const httplib::Request& request) const;
   // Devuelve el id de la ruta. Lanza 401 sin token y 403 si no es el del token.
   std::uint64_t RequireOwner(const httplib::Request& request) const;
+  bool HasServiceToken(const httplib::Request& request) const;
 
   void Register(const httplib::Request& request, httplib::Response& response);
   void Login(const httplib::Request& request, httplib::Response& response);
@@ -41,9 +48,12 @@ class UserController {
   void UpdateUser(const httplib::Request& request, httplib::Response& response);
   void DeleteUser(const httplib::Request& request, httplib::Response& response);
   void GetQuota(const httplib::Request& request, httplib::Response& response);
+  void ChangeQuotaUsage(const httplib::Request& request,
+                        httplib::Response& response);
 
   UserService& users_;
   const AuthService& auth_;
+  const ServiceTokenVerifier& service_tokens_;
 };
 
 }  // namespace tecflix::users

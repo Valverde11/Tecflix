@@ -73,6 +73,22 @@ std::uint64_t PathUserId(const httplib::Request& request) {
   return id;
 }
 
+// nlohmann guarda los enteros no negativos como unsigned y los negativos como
+// signed; un número que no cabe en 64 bits llega como decimal y se rechaza aquí.
+const json& RequiredDelta(const json& body) {
+  const auto found = body.find("deltaBytes");
+  if (found == body.end() || !found->is_number_integer()) {
+    ThrowInvalidRequest("'deltaBytes' debe ser un entero");
+  }
+  return *found;
+}
+
+// -delta desbordaría con el mínimo de int64; en unsigned la resta está definida
+// y da el valor absoluto correcto.
+std::uint64_t Magnitude(std::int64_t negative_delta) {
+  return std::uint64_t{0} - static_cast<std::uint64_t>(negative_delta);
+}
+
 // std::gmtime usa memoria compartida y no es segura entre hilos; sus versiones
 // seguras tienen nombre y orden de argumentos distintos en cada plataforma.
 std::tm ToUtc(std::time_t seconds) {
@@ -118,8 +134,9 @@ void WriteJson(httplib::Response& response, httplib::StatusCode status,
 
 }  // namespace
 
-UserController::UserController(UserService& users, const AuthService& auth)
-    : users_(users), auth_(auth) {}
+UserController::UserController(UserService& users, const AuthService& auth,
+                               const ServiceTokenVerifier& service_tokens)
+    : users_(users), auth_(auth), service_tokens_(service_tokens) {}
 
 void UserController::RegisterRoutes(httplib::Server& server) {
   server.Post(kUsersRoute, Handle(&UserController::Register));
@@ -131,6 +148,11 @@ void UserController::RegisterRoutes(httplib::Server& server) {
   server.Put(kUserRoute, Handle(&UserController::UpdateUser));
   server.Delete(kUserRoute, Handle(&UserController::DeleteUser));
   server.Get(kQuotaRoute, Handle(&UserController::GetQuota));
+  server.Post(kQuotaUsageRoute, Handle(&UserController::ChangeQuotaUsage));
+}
+
+bool UserController::HasServiceToken(const httplib::Request& request) const {
+  return service_tokens_.Verify(request.get_header_value(kServiceTokenHeader));
 }
 
 httplib::Server::Handler UserController::Handle(Action action) {
@@ -216,8 +238,27 @@ void UserController::DeleteUser(const httplib::Request& request,
 
 void UserController::GetQuota(const httplib::Request& request,
                               httplib::Response& response) {
+  // Streaming consulta la cuota de cualquier usuario antes de aceptar una subida.
+  const std::uint64_t id =
+      HasServiceToken(request) ? PathUserId(request) : RequireOwner(request);
   WriteJson(response, httplib::StatusCode::OK_200,
-            ToJson(users_.GetQuota(RequireOwner(request))));
+            ToJson(users_.GetQuota(id)));
+}
+
+void UserController::ChangeQuotaUsage(const httplib::Request& request,
+                                      httplib::Response& response) {
+  if (!HasServiceToken(request)) {
+    throw ApiError(httplib::StatusCode::Unauthorized_401, "unauthorized",
+                   "Esta ruta solo la pueden usar otros servicios");
+  }
+  const std::uint64_t id = PathUserId(request);
+  const json body = ParseObject(request.body);
+  const json& delta = RequiredDelta(body);
+  const QuotaUsage usage =
+      delta.is_number_unsigned()
+          ? users_.ReserveSpace(id, delta.get<std::uint64_t>())
+          : users_.ReleaseSpace(id, Magnitude(delta.get<std::int64_t>()));
+  WriteJson(response, httplib::StatusCode::OK_200, ToJson(usage));
 }
 
 }  // namespace tecflix::users

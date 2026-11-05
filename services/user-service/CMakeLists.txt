@@ -34,6 +34,7 @@ add_library(user_service_core
     src/security/base64_url.cpp
     src/security/crypto_primitives.cpp
     src/security/password_hasher.cpp
+    src/security/service_token_verifier.cpp
     src/storage/binary_file.cpp
     src/storage/byte_codec.cpp
     src/storage/user_data_file.cpp

@@ -31,6 +31,8 @@ class HttpTestServer : public ::testing::Test {
   static constexpr const char* kNowText = "2023-11-14T22:13:20Z";
   static constexpr const char* kAuthSecret =
       "secreto-de-pruebas-con-32-bytes-o-mas";
+  static constexpr const char* kServiceSecret =
+      "secreto-de-servicio-con-32-bytes-o-mas";
 
   void SetUp() override {
     port_ = server_.BindToAnyPort(kLocalHost);
@@ -83,7 +85,8 @@ class HttpTestServer : public ::testing::Test {
   UserService users_{repository_, PasswordHasher{kFastIterations},
                      [] { return kNow; }};
   AuthService auth_{kAuthSecret, [] { return kNow; }};
-  UserController controller_{users_, auth_};
+  ServiceTokenVerifier service_tokens_{kServiceSecret};
+  UserController controller_{users_, auth_, service_tokens_};
   ApiServer server_{controller_};
   int port_ = 0;
   std::thread listener_;
