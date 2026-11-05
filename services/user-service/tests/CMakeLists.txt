@@ -1,4 +1,5 @@
 add_executable(user_service_tests
+    api_error_test.cpp
     api_server_test.cpp
     auth_service_test.cpp
     base64_url_test.cpp

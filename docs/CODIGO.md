@@ -512,3 +512,25 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 **Por qué bloques con llaves.** El primer bloque crea el repositorio y al salir lo destruye, lo que cierra los cuatro archivos. Es lo mismo que hace un proceso que termina: sin un objeto vivo, los datos solo pueden venir del disco.
 
 **Pruebas:** 1 nueva; `ctest` queda en 192.
+
+### U4.2 — Errores uniformes (`ApiErrors`)
+
+**Qué hace.** Toda respuesta de error tiene la forma de `SPEC.md` 4.1: `{"error":"codigo_estable","message":"texto"}`. Los controladores nunca escriben errores: lanzan una excepción, y `ApiServer` la entrega a `ApiErrors::WriteException` mediante el `set_exception_handler` de httplib. Como solo existe un punto de salida, ninguna ruta puede responder con otro formato ni olvidar un caso.
+
+**Tres tipos de error.**
+
+| Excepción | Origen | Respuesta |
+|---|---|---|
+| `UserError` | Regla de negocio | 400, 401, 404, 409 o 413, según la tabla `MappingOf` |
+| `ApiError` | Capa HTTP: JSON inválido, sin token, sin permiso | El estado y código que trae |
+| Cualquier otra, como `StorageError` | Falla del servidor | 500 `internal_error` |
+
+**El 500 no incluye detalles.** El texto de un `StorageError` puede contener rutas de archivos, útiles para un atacante e inútiles para el cliente. Se escribe en `std::cerr` para quien opera el servidor y al cliente solo le llega un mensaje genérico. Una prueba lo verifica con una ruta de ejemplo.
+
+**Por qué 413 para la cuota.** Lo fija `SPEC.md` 4.1. Liberar de más responde 409 porque la petición es válida, pero choca con el estado actual.
+
+**`switch` sin `default`.** Si alguien agrega un `UserErrorCode` y olvida traducirlo, el compilador avisa, y con warnings como errores la compilación falla. El `throw` del final solo se alcanzaría con un valor fuera del enum.
+
+**Errores que genera httplib.** Una ruta inexistente o un cuerpo demasiado grande no pasan por un controlador: llegan con el estado puesto y sin cuerpo. `FillEmptyBody` les da el mismo formato y respeta los cuerpos que ya existen, porque httplib lo llama para todo estado ≥ 400.
+
+**Pruebas:** 14 nuevas. Una por cada código de `UserErrorCode` (9), `ApiError`, 500 sin detalles, excepción de tipo desconocido, y los dos casos de `FillEmptyBody`. Además, la ruta inexistente ahora comprueba el JSON de error por HTTP real.
