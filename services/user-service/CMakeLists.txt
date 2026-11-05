@@ -27,6 +27,7 @@ add_library(user_service_core
     src/config.cpp
     src/environment.cpp
     src/health_controller.cpp
+    src/security/password_hasher.cpp
     src/storage/binary_file.cpp
     src/storage/byte_codec.cpp
     src/storage/user_data_file.cpp
@@ -36,7 +37,7 @@ add_library(user_service_core
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core
     PUBLIC httplib::httplib nlohmann_json::nlohmann_json
-    PRIVATE user_service_warnings
+    PRIVATE mbedcrypto user_service_warnings
 )
 
 add_executable(user-service src/main.cpp)

@@ -20,7 +20,22 @@ FetchContent_Declare(nlohmann_json
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(httplib nlohmann_json)
+# Mbed TLS: PBKDF2 para contraseñas y HMAC-SHA256 para el token (rama LTS 3.6).
+# Se usa solo la parte criptográfica. GEN_FILES apagado evita exigir Python, porque
+# la versión publicada ya trae los archivos generados, y FATAL_WARNINGS apagado
+# evita que un aviso en código ajeno rompa nuestra compilación.
+set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(GEN_FILES OFF CACHE BOOL "" FORCE)
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
+FetchContent_Declare(mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG        mbedtls-3.6.7
+    GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(httplib nlohmann_json mbedtls)
 
 if(USER_SERVICE_BUILD_TESTS)
     # En Windows, GoogleTest debe usar el mismo runtime de C que el resto del proyecto.
