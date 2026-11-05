@@ -2,39 +2,15 @@
 
 #include <gtest/gtest.h>
 #include <httplib.h>
+
 #include <nlohmann/json.hpp>
 
-#include <thread>
+#include "http_test_server.hpp"
 
 namespace tecflix::users {
 namespace {
 
-constexpr const char* kLocalHost = "127.0.0.1";
-
-// Levanta el servidor real en un puerto libre y lo detiene al terminar cada prueba.
-class ApiServerTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    port_ = server_.BindToAnyPort(kLocalHost);
-    ASSERT_GT(port_, 0);
-    listener_ = std::thread([this] { server_.Listen(); });
-    // Sin esta espera, Stop() podría llegar antes que Listen() y el hilo no terminaría.
-    server_.WaitUntilReady();
-  }
-
-  void TearDown() override {
-    server_.Stop();
-    if (listener_.joinable()) {
-      listener_.join();
-    }
-  }
-
-  httplib::Client Client() const { return httplib::Client(kLocalHost, port_); }
-
-  ApiServer server_;
-  int port_ = 0;
-  std::thread listener_;
-};
+class ApiServerTest : public HttpTestServer {};
 
 TEST_F(ApiServerTest, HealthReturnsOkStatus) {
   auto client = Client();

@@ -6,7 +6,8 @@
 
 namespace tecflix::users {
 
-ApiServer::ApiServer() {
+ApiServer::ApiServer(UserController& users) {
+  server_.set_payload_max_length(kMaxBodyBytes);
   server_.set_exception_handler([](const httplib::Request&,
                                    httplib::Response& response,
                                    std::exception_ptr error) {
@@ -17,6 +18,7 @@ ApiServer::ApiServer() {
         ApiErrors::FillEmptyBody(response);
       });
   health_controller_.RegisterRoutes(server_);
+  users.RegisterRoutes(server_);
 }
 
 bool ApiServer::Bind(const std::string& host, int port) {

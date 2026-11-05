@@ -39,6 +39,7 @@ add_library(user_service_core
     src/storage/user_data_file.cpp
     src/storage/user_record.cpp
     src/storage/user_repository.cpp
+    src/user_controller.cpp
 )
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core
