@@ -1,0 +1,21 @@
+# Compilación C++ (CMake / vcpkg / Visual Studio)
+build/
+out/
+vcpkg_installed/
+.vs/
+CMakeUserPresets.json
+
+# Datos de la API de usuarios (archivos binarios generados en ejecución)
+services/user-service/data/
+*.dat
+*.idx
+
+# Aplicación web
+node_modules/
+dist/
+coverage/
+
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
