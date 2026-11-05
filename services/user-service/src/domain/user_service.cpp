@@ -35,6 +35,11 @@ void RequireValidPassword(const std::string& password) {
   throw UserError(UserErrorCode::kUserNotFound, "El usuario no existe");
 }
 
+[[noreturn]] void ThrowInvalidCredentials() {
+  throw UserError(UserErrorCode::kInvalidCredentials,
+                  "Usuario o contraseña incorrectos");
+}
+
 void RequireSuccess(WriteStatus status) {
   switch (status) {
     case WriteStatus::kSuccess:
@@ -95,6 +100,29 @@ UserProfile UserService::Register(const Registration& registration) {
   const CreateResult result = repository_.Create(draft);
   RequireSuccess(result.status);
   return ToProfile(*result.user);
+}
+
+UserProfile UserService::Authenticate(const std::string& username,
+                                      const std::string& password) {
+  // Ninguna cuenta puede tener estos valores, así que responder sin calcular el
+  // hash no revela nada y evita gastar CPU en peticiones basura.
+  if (!UserValidator::IsValidUsername(username) ||
+      !UserValidator::IsValidPassword(password)) {
+    ThrowInvalidCredentials();
+  }
+
+  const auto record = repository_.FindByUsername(username);
+  if (!record) {
+    // Sin este cálculo la respuesta tardaría microsegundos en vez de casi un
+    // segundo, y medir el tiempo bastaría para saber qué usernames existen. El
+    // resultado no importa: solo se paga el mismo costo que un usuario real.
+    hasher_.Verify(password, PasswordHasher::Hash{}, PasswordHasher::Salt{});
+    ThrowInvalidCredentials();
+  }
+  if (!hasher_.Verify(password, record->password_hash, record->salt)) {
+    ThrowInvalidCredentials();
+  }
+  return ToProfile(*record);
 }
 
 UserProfile UserService::Get(std::uint64_t id) {
