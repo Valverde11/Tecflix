@@ -72,6 +72,10 @@ UserProfile ToProfile(const UserRecord& record) {
   return profile;
 }
 
+QuotaUsage ToQuotaUsage(const UserRecord& record) {
+  return {record.quota_bytes, record.used_bytes};
+}
+
 }  // namespace
 
 std::int64_t UserService::SystemClock() {
@@ -126,11 +130,7 @@ UserProfile UserService::Authenticate(const std::string& username,
 }
 
 UserProfile UserService::Get(std::uint64_t id) {
-  const auto record = repository_.FindById(id);
-  if (!record) {
-    ThrowUserNotFound();
-  }
-  return ToProfile(*record);
+  return ToProfile(LoadUser(id));
 }
 
 UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes) {
@@ -146,28 +146,61 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
     RequireValidPassword(*changes.password);
   }
 
-  auto record = repository_.FindById(id);
-  if (!record) {
-    ThrowUserNotFound();
-  }
+  UserRecord record = LoadUser(id);
   if (changes.username) {
-    record->username = *changes.username;
+    record.username = *changes.username;
   }
   if (changes.email) {
-    record->email = *changes.email;
+    record.email = *changes.email;
   }
   if (changes.password) {
-    ApplyCredentials(hasher_.Create(*changes.password), *record);
+    ApplyCredentials(hasher_.Create(*changes.password), record);
   }
 
-  RequireSuccess(repository_.Update(*record));
-  return ToProfile(*record);
+  RequireSuccess(repository_.Update(record));
+  return ToProfile(record);
 }
 
 void UserService::Delete(std::uint64_t id) {
   if (!repository_.Remove(id)) {
     ThrowUserNotFound();
   }
+}
+
+QuotaUsage UserService::GetQuota(std::uint64_t id) {
+  return ToQuotaUsage(LoadUser(id));
+}
+
+QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
+  UserRecord record = LoadUser(id);
+  // Se compara contra lo disponible y no se suma used + bytes: bytes viene de
+  // afuera y una suma cercana al máximo de uint64 daría la vuelta y pasaría.
+  if (bytes > record.quota_bytes - record.used_bytes) {
+    throw UserError(UserErrorCode::kQuotaExceeded,
+                    "El usuario no tiene espacio suficiente en su cuota");
+  }
+  record.used_bytes += bytes;
+  RequireSuccess(repository_.Update(record));
+  return ToQuotaUsage(record);
+}
+
+QuotaUsage UserService::ReleaseSpace(std::uint64_t id, std::uint64_t bytes) {
+  UserRecord record = LoadUser(id);
+  if (bytes > record.used_bytes) {
+    throw UserError(UserErrorCode::kReleaseExceedsUsage,
+                    "No se puede liberar más espacio del que está en uso");
+  }
+  record.used_bytes -= bytes;
+  RequireSuccess(repository_.Update(record));
+  return ToQuotaUsage(record);
+}
+
+UserRecord UserService::LoadUser(std::uint64_t id) {
+  auto record = repository_.FindById(id);
+  if (!record) {
+    ThrowUserNotFound();
+  }
+  return *record;
 }
 
 }  // namespace tecflix::users

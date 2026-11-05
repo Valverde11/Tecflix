@@ -13,6 +13,8 @@ enum class UserErrorCode {
   kEmailTaken,
   kUserNotFound,
   kInvalidCredentials,
+  kQuotaExceeded,
+  kReleaseExceedsUsage,
 };
 
 // Error causado por la petición, no por el servidor. Lleva un código estable

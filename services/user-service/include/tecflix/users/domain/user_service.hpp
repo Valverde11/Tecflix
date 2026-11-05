@@ -35,6 +35,11 @@ struct ProfileChanges {
   std::optional<std::string> password;
 };
 
+struct QuotaUsage {
+  std::uint64_t quota_bytes = 0;
+  std::uint64_t used_bytes = 0;
+};
+
 // Reglas de negocio de los usuarios: valida los datos, protege la contraseña y
 // asigna la cuota. Todas las operaciones lanzan UserError si la petición no se
 // puede cumplir.
@@ -63,7 +68,19 @@ class UserService {
   UserProfile Update(std::uint64_t id, const ProfileChanges& changes);
   void Delete(std::uint64_t id);
 
+  QuotaUsage GetQuota(std::uint64_t id);
+  // Suma bytes al espacio usado. Llenar la cuota exacta se permite; pasarla lanza
+  // kQuotaExceeded y no cambia nada.
+  QuotaUsage ReserveSpace(std::uint64_t id, std::uint64_t bytes);
+  // Resta bytes al espacio usado. Liberar más de lo usado lanza
+  // kReleaseExceedsUsage y no cambia nada: indica una liberación repetida o un
+  // tamaño mal reportado, y ajustar a cero escondería ese error.
+  QuotaUsage ReleaseSpace(std::uint64_t id, std::uint64_t bytes);
+
  private:
+  // Lanza kUserNotFound si el usuario no existe.
+  UserRecord LoadUser(std::uint64_t id);
+
   UserRepository& repository_;
   PasswordHasher hasher_;
   Clock clock_;
