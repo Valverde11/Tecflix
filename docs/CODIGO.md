@@ -438,3 +438,45 @@ Se valida en el servidor aunque la web también lo haga, porque cualquiera puede
 
 **Pruebas:** 8 casos. Devuelve el perfil, ignora mayúsculas, rechaza contraseña incorrecta, mismo código y mensaje con usuario inexistente, entrada malformada sin `std::invalid_argument`, usuario eliminado, y que el login siga los cambios de username y contraseña.
 - **Prueba de tiempo:** compara una contraseña incorrecta con un usuario inexistente usando 50 000 iteraciones. Exige una proporción mayor que 0,25: con el relleno ronda 1, y sin él se midió 0,0004 quitando la línea a propósito. El umbral queda lejos de ambos para que la carga de la máquina no la haga fallar.
+
+### Refactor — `CryptoPrimitives`
+
+`RequireSuccess` (convierte un código de error de Mbed TLS en excepción) y la comparación en tiempo constante vivían dentro de `password_hasher.cpp`. `AuthService` necesita las mismas dos cosas, así que pasaron a una clase compartida antes de escribirlo, para no duplicarlas. Ahí queda también el bloque `extern "C"` que compensa el descuido del header de Mbed TLS: si estuviera en dos archivos, habría que corregirlo en dos lugares. El comportamiento de `PasswordHasher` no cambió.
+
+### U3.5 — `AuthService`: emitir y validar el JWT
+
+**Qué hace.** `IssueToken(perfil)` crea el token después del login y `ValidateToken(texto)` devuelve quién es el usuario, o `std::nullopt` si el token no sirve. Así se autentican las peticiones sin guardar sesiones: el token se valida solo con el secreto, y por eso metadata y streaming pueden comprobarlo sin llamar a este servicio (`SPEC.md` 4.2). En V2.0 esto ayuda: dos instancias no necesitan compartir sesiones.
+
+**Cómo es un JWT.** Son tres partes en Base64Url separadas por puntos: `cabecera.contenido.firma`.
+- **Cabecera:** `{"alg":"HS256","typ":"JWT"}`.
+- **Contenido:** `sub` (id del usuario), `username` y `exp` (vencimiento, 8 h).
+- **Firma:** HMAC-SHA256 de `cabecera.contenido` con `AUTH_SECRET`.
+
+El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garantiza que nadie lo cambió, por eso el token no lleva datos sensibles. Cambiar un solo carácter del contenido exige recalcular la firma, y sin el secreto no se puede.
+
+**Se valida en este orden, y el orden importa.**
+1. **Firma primero.** Nada del contenido se interpreta hasta saber que es auténtico: un atacante no puede hacer que el parser JSON procese datos arbitrarios.
+2. **Cabecera exacta.** Este servicio emite un solo tipo de token, así que basta compararla con la constante. El algoritmo nunca se lee del token. El ataque clásico contra JWT es enviar `"alg":"none"` y aprovechar a los validadores que obedecen ese campo; aquí no tiene efecto.
+3. **Contenido y vencimiento.** Se revisan los tipos de cada campo. El token vence exactamente en `exp`: en ese segundo ya no sirve (RFC 7519).
+
+**La firma se compara como texto y en tiempo constante.** En tiempo constante por lo mismo que el hash de la contraseña: una comparación normal sale en el primer byte distinto y ese tiempo orienta a quien prueba firmas. Como texto porque 32 bytes ocupan 43 caracteres de Base64 y el último tiene 2 bits que se descartan: `...2HE` y `...2HF` decodifican a la misma firma. Comparar bytes decodificados aceptaría variantes de un mismo token.
+
+**`sub` es texto, no número.** El RFC 7519 define ese campo como texto, aunque contenga `"1"`. Quien lo lea en otros servicios debe convertirlo; hay que avisarlo al equipo.
+
+**`AUTH_SECRET`.** Es la única variable sin valor por defecto: un secreto por defecto estaría en el repositorio y cualquiera podría falsificar tokens. `Config` rechaza que falte o esté vacía, y el servicio no arranca. `AuthService` exige además 32 bytes, la longitud mínima para HS256 según RFC 7518, porque un secreto corto se puede adivinar por fuerza bruta a partir de cualquier token. Esa regla vive en `AuthService` y no en `Config` para que la clase no pueda existir en un estado inseguro; se aplicará al arrancar cuando U4 la cree en `main`. Los mensajes de error nunca incluyen el valor del secreto.
+
+**`ValidateToken` devuelve `optional` y no lanza excepción.** Un token inválido es un caso normal, no un error, y da igual la causa: la respuesta siempre es 401. Por la misma razón `json::parse` se llama sin excepciones.
+
+**`Base64Url` envuelve el Base64 de Mbed TLS.** JWT usa la variante para URLs (`-` y `_`, sin `=`). Se traduce el alfabeto y se quita o repone el relleno, en vez de escribir el algoritmo a mano.
+
+**Limitaciones conocidas.**
+- Un token no se puede revocar: si el usuario se elimina o cambia de contraseña, el token sigue siendo válido hasta `exp`. Es el costo de no consultar una base de datos en cada petición. Los endpoints de este servicio igual responderán 404 porque el usuario ya no existe, pero metadata y streaming no se enterarían.
+- El `username` del token puede quedar viejo si el usuario lo cambia. El dato confiable es `sub`.
+- Todos los servicios comparten `AUTH_SECRET`, así que cualquiera de ellos podría emitir tokens. Con HS256 es inevitable; evitarlo exigiría firmas asimétricas (RS256).
+
+**Pruebas:** 15 de `AuthService`, 5 de `Base64Url` y 1 de HMAC, más 2 nuevas de `Config`.
+- **Vectores independientes:** el token esperado se calculó con `HMACSHA256` de .NET y el HMAC se compara con el RFC 4231. Sin esto solo se compararía este código consigo mismo. El Base64 usa los vectores del RFC 4648.
+- **Ataques:** contenido alterado, otro secreto, `alg: none` sin firma y con firma válida, y firma que solo cambia en los bits descartados.
+- **Vencimiento:** válido un segundo antes de `exp`, inválido justo en `exp`.
+- **Contenido inválido con firma correcta:** 14 variantes, como campos ausentes, tipos equivocados o un id que no cabe en 64 bits.
+- **`Config`:** las pruebas de puerto ahora incluyen el secreto. Sin eso pasarían por la razón equivocada, porque esperan la misma excepción que produce la falta del secreto.
