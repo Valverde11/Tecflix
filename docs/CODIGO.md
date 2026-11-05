@@ -356,3 +356,30 @@ Reservar un nombre de más es un defecto menor. Duplicarlo sería grave, porque 
 - **Datos inválidos:** comprueban que no quede nada escrito.
 - **Caídas:** registro huérfano, `Remove` interrumpido y `Create` interrumpido.
 - **Carga:** 300 usuarios creados y la mitad eliminados, verificando después las invariantes de los dos árboles.
+
+### U3.2 — `PasswordHasher`: contraseñas con hash y salt
+
+**Qué hace.** `Create` recibe una contraseña y devuelve un hash de 32 bytes y un salt de 16, justo los campos que ya tenía `UserRecord`, así que el formato del archivo no cambió. `Verify` recalcula el hash con el salt guardado y lo compara. La contraseña nunca se guarda: del hash no se puede volver a ella.
+
+**Por qué un hash lento.** Un SHA-256 simple se calcula miles de millones de veces por segundo en una GPU; si alguien robara `users.dat`, probaría millones de contraseñas comunes en segundos. PBKDF2 encadena el hash 600 000 veces (mínimo que recomienda OWASP para HMAC-SHA256), y ese costo se multiplica en cada intento del atacante.
+
+**Por qué salt.** Es un valor aleatorio distinto por usuario. Sin él, dos usuarios con la misma contraseña tendrían el mismo hash, y un atacante podría usar tablas precalculadas. Con él, cada usuario se ataca por separado. El salt no es secreto: se guarda junto al hash.
+
+**Por qué Mbed TLS y no código propio.** El árbol B se implementa a mano porque es lo evaluado. La criptografía es lo contrario: escribirla a mano es una mala práctica conocida. Mbed TLS se descarga con FetchContent como el resto, sin instalar nada, y también cubre el HMAC-SHA256 del token (U3.5). Argon2id resiste mejor los ataques por GPU, pero la opción que lo ofrecía no incluía HMAC-SHA256 y habría exigido una segunda librería.
+
+**Tres detalles de seguridad.**
+- **Comparación en tiempo constante** (`mbedtls_ct_memcmp`): una comparación normal termina en el primer byte distinto, y ese tiempo puede filtrar información.
+- **Generador aleatorio criptográfico** (`SecureRandom`, CTR_DRBG con entropía del sistema): `rand()` y `mt19937` son predecibles. Es RAII, y se crea uno por llamada para no compartir estado entre hilos.
+- **La contraseña se pasa con su longitud**, no como cadena de C: si no, lo que sigue a un byte `\0` se ignoraría. Hay una prueba para esto.
+
+**El `extern "C"` alrededor del include.** `mbedtls/constant_time.h` no tiene ese bloque, a diferencia de los demás headers de la librería. Sin él, C++ busca el símbolo con nombre decorado y el enlazador no lo encuentra (`LNK2019`).
+
+**Costo medido.** Cada hash tarda unos 0,85 s en Release y 3,5 s en Debug (medido en esta máquina). Eso tiene dos consecuencias: el hash debe calcularse **fuera** del mutex del repositorio (U4.5), o un login bloquearía a todos los demás; y limita cuántos logins por segundo aguanta el servicio, algo a considerar en el load-test de V2.0.
+
+**Las iteraciones no se guardan en el registro.** Son una constante, porque agregarlas cambiaría el formato del archivo. Por eso cambiar `kDefaultIterations` invalida las contraseñas existentes.
+
+**Pruebas:** 11 casos, con 1000 iteraciones para que sean rápidas, salvo uno con las 600 000 reales.
+- **Vector independiente:** el hash esperado se calculó con `Rfc2898DeriveBytes` de .NET. Sin esto, las pruebas solo compararían Mbed TLS consigo mismo, y un parámetro mal pasado no se notaría.
+- **Rechazos:** contraseña distinta, salt distinto, hash con el primer o el último byte cambiado, y otra cantidad de iteraciones.
+- **Salt:** la misma contraseña produce salt y hash distintos.
+- **Byte nulo:** se usa la contraseña completa aunque contenga `\0`.
