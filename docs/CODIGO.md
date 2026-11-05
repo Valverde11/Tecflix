@@ -474,7 +474,7 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 - El `username` del token puede quedar viejo si el usuario lo cambia. El dato confiable es `sub`.
 - Todos los servicios comparten `AUTH_SECRET`, así que cualquiera de ellos podría emitir tokens. Con HS256 es inevitable; evitarlo exigiría firmas asimétricas (RS256).
 
-**Pruebas:** 15 de `AuthService`, 5 de `Base64Url` y 1 de HMAC, más 2 nuevas de `Config`.
+**Pruebas:** 13 de `AuthService`, 5 de `Base64Url` y 1 de HMAC, más 2 nuevas de `Config`.
 - **Vectores independientes:** el token esperado se calculó con `HMACSHA256` de .NET y el HMAC se compara con el RFC 4231. Sin esto solo se compararía este código consigo mismo. El Base64 usa los vectores del RFC 4648.
 - **Ataques:** contenido alterado, otro secreto, `alg: none` sin firma y con firma válida, y firma que solo cambia en los bits descartados.
 - **Vencimiento:** válido un segundo antes de `exp`, inválido justo en `exp`.
