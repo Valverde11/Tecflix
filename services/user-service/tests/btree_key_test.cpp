@@ -26,6 +26,12 @@ TEST(BTreeKeyTest, EqualInputsProduceEqualKeys) {
   EXPECT_NE(BTreeKey::FromString("ana"), BTreeKey::FromString("Ana"));
 }
 
+// Los bytes se comparan sin signo: con char con signo, los bytes UTF-8 de "ñ"
+// serían negativos y quedarían antes que cualquier letra ASCII.
+TEST(BTreeKeyTest, MultibyteCharactersSortAfterAscii) {
+  EXPECT_LT(BTreeKey::FromString("zeta"), BTreeKey::FromString("ñandú"));
+}
+
 TEST(BTreeKeyTest, AcceptsStringThatFillsTheKey) {
   const std::string full(BTreeKey::kSize, 'z');
 
