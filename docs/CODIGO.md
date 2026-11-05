@@ -323,39 +323,41 @@ Los nombres de los casos son los de Cormen, cap. 18.3. En cada nodo, `RemoveFrom
 
 **Error útil durante el desarrollo.** La primera versión de la prueba reabría el archivo con el grado por defecto y falló con "El índice fue creado con otro grado". El árbol hizo lo correcto: un archivo creado con un grado no debe interpretarse con otro. Se corrigió la prueba, no el código.
 
-### U3.1 — `UserRepository`: datos y dos índices como una sola colección
+### U3.1 — `UserRepository`: datos e índices como una sola colección
 
-**Qué hace.** Es la única clase que conoce los tres archivos: `users.dat`, `users_by_id.idx` y `users_by_username.idx`. Ofrece `Create`, `FindById`, `FindByUsername`, `Update` y `Remove`, y las capas superiores no saben que existen árboles ni registros. Cada búsqueda baja por un árbol B (O(log n)) para obtener el índice del registro, y con ese índice lee `users.dat` en una sola operación.
+**Qué hace.** Es la única clase que conoce los cuatro archivos: `users.dat`, `users_by_id.idx`, `users_by_username.idx` y `users_by_email.idx` (este último se agregó en U3.3). Ofrece `Create`, `FindById`, `FindByUsername`, `Update` y `Remove`, y las capas superiores no saben que existen árboles ni registros. Cada búsqueda baja por un árbol B (O(log n)) para obtener el índice del registro, y con ese índice lee `users.dat` en una sola operación.
 
 **Cómo se generan los ids.** `id = RecordCount() + 1`. Como el borrado es lógico, `users.dat` nunca pierde registros y el total solo crece: funciona como contador persistente sin agregar campos al archivo, y un id eliminado no se reutiliza. Esto importa porque metadata guarda el id del dueño de cada video: si se reutilizara, un usuario nuevo heredaría los videos de otro.
 
 **Pregunta probable en la defensa: si `id = índice + 1`, ¿para qué el árbol por id?** Hoy esa relación se cumple, pero es un detalle de cómo se genera el id, no una regla del formato. El árbol además sabe qué usuarios están activos: al eliminar uno, su clave sale del árbol. Y es lo que pide el enunciado: las búsquedas se hacen con el árbol B.
 
-**El problema de los tres archivos.** Una operación escribe en varios archivos y el proceso puede caerse entre dos escrituras. No hay registro de transacciones (WAL), así que la defensa es el **orden** de las escrituras. La regla es que `users.dat` manda y que una caída nunca debe permitir dos usuarios con el mismo username:
+**El problema de los varios archivos.** Una operación escribe en varios archivos y el proceso puede caerse entre dos escrituras. No hay registro de transacciones (WAL), así que la defensa es el **orden** de las escrituras. La regla es que `users.dat` manda y que una caída nunca debe permitir dos usuarios alcanzables con el mismo username o email:
 
 | Operación | Orden | Si se cae a la mitad |
 |---|---|---|
-| `Create` | datos → username → id | Tras los datos: registro huérfano que nadie encuentra. Tras el username: el nombre queda reservado y el usuario solo se encuentra por username |
-| `Update` con cambio de nombre | reservar nombre nuevo → datos → quitar nombre viejo | Los dos nombres llevan al mismo registro, pero nadie más puede tomar el nuevo |
-| `Remove` | marcar borrado → username → id | El usuario ya no aparece en las consultas; su nombre sigue reservado |
+| `Create` | datos → email → username → id | Tras los datos: registro huérfano que nadie encuentra. Tras el email: ese email queda reservado. Tras el username: el usuario solo se encuentra por username |
+| `Update` con cambio de nombre o email | reservar valores nuevos → datos → quitar valores viejos | Los valores viejo y nuevo llevan al mismo registro, pero nadie más puede tomar el nuevo |
+| `Remove` | marcar borrado → email → username → id | El usuario ya no aparece en las consultas; lo que falte por limpiar sigue reservado |
 
-Reservar un nombre de más es un defecto menor. Duplicarlo sería grave, porque el login podría entrar a la cuenta equivocada. Estos estados no se reparan solos al arrancar; es la limitación ya conocida de no tener WAL.
+¿Por qué el email va primero? Un usuario solo se alcanza por username o por id, y esas claves se escriben después. Así, todo usuario alcanzable ya tiene reservados sus dos valores únicos.
 
-**Bug encontrado durante el desarrollo.** La primera versión escribía el índice por id antes que el de username. Si fallaba entre ambos, el usuario existía por id pero su nombre aparecía libre, y otro podía registrarlo. Todas las pruebas pasaban, y el error se encontró al repasar el orden caso por caso. La primera prueba que se escribió tampoco lo detectaba, porque simulaba el estado que deja el orden *nuevo*. La definitiva (`FailedCreateKeepsTheUsernameReserved`) interrumpe `Create` de verdad: siembra el id 1 en el índice para que el `Insert` por id falle. Se comprobó que fallaba con el orden viejo y que pasa con el nuevo.
+Reservar un valor de más es un defecto menor. Duplicarlo sería grave, porque el login podría entrar a la cuenta equivocada. Estos estados no se reparan solos al arrancar; es la limitación ya conocida de no tener WAL.
+
+**Bug encontrado durante el desarrollo.** La primera versión escribía el índice por id antes que el de username. Si fallaba entre ambos, el usuario existía por id pero su nombre aparecía libre, y otro podía registrarlo. Todas las pruebas pasaban, y el error se encontró al repasar el orden caso por caso. La primera prueba que se escribió tampoco lo detectaba, porque simulaba el estado que deja el orden *nuevo*. La definitiva (hoy `FailedCreateKeepsUsernameAndEmailReserved`) interrumpe `Create` de verdad: siembra el id 1 en el índice para que el `Insert` por id falle. Se comprobó que fallaba con el orden viejo y que pasa con el nuevo. Esta técnica solo puede interrumpir el último paso, así que el orden entre email y username se justifica por el razonamiento de arriba, no por una prueba.
 
 **Validar antes de escribir.** `Create` construye la clave antes de escribir y `Append` serializa antes de tocar el disco. `Update` llama a `Serialize` al principio solo para validar: si el email fuera inválido y eso se descubriera en `WriteAt`, el nombre nuevo ya estaría reservado sin que nadie lo use.
 
 **`Update` no puede eliminar.** Si recibe `deleted = true`, lanza una excepción: marcar el registro sin limpiar los índices dejaría claves apuntando a un usuario eliminado. La única forma de eliminar es `Remove`.
 
-**`UpdateResult` en vez de excepciones.** "No existe" y "username ocupado" son resultados normales que se traducirán a 404 y 409. Las excepciones quedan para errores de programación (`invalid_argument`) y fallos de disco (`StorageError`, que será un 500).
+**`WriteStatus` en vez de excepciones.** "No existe" y "valor ocupado" son resultados normales de un repositorio, y `UserService` los convierte en `UserError`. Las excepciones del repositorio quedan para errores de programación (`invalid_argument`) y fallos de disco (`StorageError`, que será un 500).
 
 **Concurrencia.** La clase no es segura entre hilos, y lo dice su comentario. Se protegerá con un mutex en U4.5.
 
-**Pruebas:** 23 casos con `t = 2` para forzar divisiones y fusiones:
+**Pruebas:** 31 casos (incluidos los de U3.3) con `t = 2` para forzar divisiones y fusiones:
 - **Operaciones:** ids consecutivos, búsqueda por ambas claves, renombrado, conflicto de nombre, usuario inexistente y persistencia tras reabrir.
 - **Datos inválidos:** comprueban que no quede nada escrito.
 - **Caídas:** registro huérfano, `Remove` interrumpido y `Create` interrumpido.
-- **Carga:** 300 usuarios creados y la mitad eliminados, verificando después las invariantes de los dos árboles.
+- **Carga:** 300 usuarios creados y la mitad eliminados, verificando después las invariantes de los tres árboles.
 
 ### U3.2 — `PasswordHasher`: contraseñas con hash y salt
 
@@ -383,3 +385,37 @@ Reservar un nombre de más es un defecto menor. Duplicarlo sería grave, porque 
 - **Rechazos:** contraseña distinta, salt distinto, hash con el primer o el último byte cambiado, y otra cantidad de iteraciones.
 - **Salt:** la misma contraseña produce salt y hash distintos.
 - **Byte nulo:** se usa la contraseña completa aunque contenga `\0`.
+
+### U3.3 — `UserService`, email único y claves sin mayúsculas
+
+**Qué hace.** `UserService` contiene las reglas de negocio: `Register`, `Get`, `Update` y `Delete`. Valida los datos, calcula el hash de la contraseña, asigna la cuota fija de 1 GB y la fecha de registro. El repositorio guarda; el servicio decide qué se puede guardar.
+
+**Email único con un tercer árbol B.** El email ocupa hasta 64 bytes y la clave del árbol, 32. Truncarlo sería un error: dos emails largos con el mismo inicio chocarían. La clave es el **SHA-256 del email en minúsculas**, que produce exactamente 32 bytes, así que el árbol no cambió. No hace falta recuperar el email desde la clave: solo se pregunta "¿ya existe?". Dos emails con el mismo SHA-256 es un caso teórico sin ejemplos prácticos, y el resultado sería solo un falso "email ocupado". Esto no es para proteger el email, porque sigue en claro en `users.dat`: es una forma de hacerlo caber.
+
+**`Ana` y `ana` son el mismo usuario.** Las claves de username y email se crean en minúsculas, pero el registro guarda lo que el usuario escribió. Así se evitan cuentas que se confunden entre sí y se respeta cómo quiere verse. La regla vive en el repositorio porque la unicidad es una propiedad del índice. Por eso `Update` compara **claves** y no textos: pasar de `ana` a `Ana` no toca el índice.
+
+**Solo ASCII y sin `std::tolower`.** Esa función depende del locale del proceso, y una clave debe generarse igual en cualquier máquina. Los usernames además solo aceptan ASCII, lo que evita nombres visualmente idénticos con letras de otro alfabeto.
+
+**Reglas de validación.** `SPEC.md` no las fija, así que son decisión de este componente:
+
+| Campo | Regla |
+|---|---|
+| Username | 3 a 32 caracteres: letras, dígitos, `_`, `.`, `-` |
+| Email | Hasta 64 caracteres, forma `texto@dominio.ext`, ASCII sin espacios |
+| Contraseña | 8 a 128 bytes, cualquier carácter |
+
+Se valida en el servidor aunque la web también lo haga, porque cualquiera puede llamar a la API directamente. La contraseña solo se limita en longitud: restringir caracteres la debilitaría. El email no se valida con regex porque una revisión básica basta: la única prueba real de que existe es enviarle un mensaje.
+
+**`UserProfile` sin hash ni salt.** El servicio nunca devuelve `UserRecord`. Si el tipo no tiene esos campos, ningún descuido en la capa REST puede enviarlos en un JSON: lo garantiza el compilador.
+
+**`UserError` con código.** La capa REST traducirá cada código a un estado HTTP en un solo lugar, sin comparar mensajes de texto. Los errores de disco siguen siendo `StorageError`, porque son culpa del servidor y no de la petición.
+
+**`ProfileChanges` con `std::optional`.** Permite distinguir "no cambiar" de "cambiar a vacío". Cuota, espacio usado y fecha no aparecen en el tipo porque el usuario no debe poder modificarlos.
+
+**Reloj inyectado.** `UserService` recibe una función que da la hora, igual que `Config` recibe la que lee el entorno. Las pruebas usan una hora fija y comprueban `created_at` exacto.
+
+**Limitaciones conocidas.**
+- `Register` calcula el hash antes de saber si el nombre está libre, así que un registro duplicado gasta casi un segundo de CPU.
+- `Update` lee y luego escribe: dos peticiones simultáneas podrían pisarse. Se resolverá en U4.5, junto con la regla de calcular el hash fuera del mutex.
+
+**Pruebas:** 7 de `UserValidator` (límites exactos y caracteres prohibidos) y 17 de `UserService`: registro, datos inválidos sin guardar nada, duplicados sin distinguir mayúsculas, actualización parcial, cambio de contraseña con salt nuevo, y eliminación. Se suman 8 del repositorio, entre ellas emails largos con el mismo inicio y soltar el username reservado cuando el email resulta ocupado.
