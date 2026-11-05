@@ -9,19 +9,24 @@
 namespace tecflix::users {
 
 Config::Config(std::uint16_t port, std::filesystem::path data_directory,
-               std::string cors_origin)
+               std::string cors_origin, std::string auth_secret)
     : port_(port),
       data_directory_(std::move(data_directory)),
-      cors_origin_(std::move(cors_origin)) {}
+      cors_origin_(std::move(cors_origin)),
+      auth_secret_(std::move(auth_secret)) {}
 
 Config Config::FromEnvironment(const EnvironmentReader& read_variable) {
   const auto port_text = read_variable("PORT");
   const auto data_directory = read_variable("DATA_DIR");
   const auto cors_origin = read_variable("CORS_ORIGIN");
+  const auto auth_secret = read_variable("AUTH_SECRET");
+  if (!auth_secret || auth_secret->empty()) {
+    throw std::invalid_argument("Falta la variable AUTH_SECRET");
+  }
 
   return Config(port_text ? ParsePort(*port_text) : kDefaultPort,
                 data_directory.value_or(kDefaultDataDirectory),
-                cors_origin.value_or(kDefaultCorsOrigin));
+                cors_origin.value_or(kDefaultCorsOrigin), *auth_secret);
 }
 
 Config Config::FromProcessEnvironment() {

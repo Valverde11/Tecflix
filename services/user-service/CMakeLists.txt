@@ -25,10 +25,12 @@ add_library(user_service_core
     src/btree/btree_node.cpp
     src/btree/page_file.cpp
     src/config.cpp
+    src/domain/auth_service.cpp
     src/domain/user_service.cpp
     src/domain/user_validator.cpp
     src/environment.cpp
     src/health_controller.cpp
+    src/security/base64_url.cpp
     src/security/crypto_primitives.cpp
     src/security/password_hasher.cpp
     src/storage/binary_file.cpp
