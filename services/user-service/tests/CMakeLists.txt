@@ -7,6 +7,7 @@ add_executable(user_service_tests
     btree_remove_test.cpp
     byte_codec_test.cpp
     config_test.cpp
+    crypto_primitives_test.cpp
     page_file_test.cpp
     password_hasher_test.cpp
     user_data_file_test.cpp

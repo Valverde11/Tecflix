@@ -1,10 +1,5 @@
 #include "tecflix/users/security/password_hasher.hpp"
 
-// Mbed TLS 3.6 olvidó el bloque extern "C" en este header, a diferencia del resto;
-// sin esto C++ busca el símbolo con otro nombre y el enlazador no lo encuentra.
-extern "C" {
-#include <mbedtls/constant_time.h>
-}
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/md.h>
@@ -13,15 +8,10 @@ extern "C" {
 #include <cstddef>
 #include <stdexcept>
 
+#include "tecflix/users/security/crypto_primitives.hpp"
+
 namespace tecflix::users {
 namespace {
-
-void RequireSuccess(int result, const std::string& operation) {
-  if (result != 0) {
-    throw std::runtime_error("Falló " + operation + " (código " +
-                             std::to_string(result) + ")");
-  }
-}
 
 // Generador de números aleatorios criptográficos. rand() y mt19937 son
 // predecibles; este se alimenta de la entropía del sistema operativo.
@@ -43,11 +33,13 @@ class SecureRandom {
   SecureRandom& operator=(const SecureRandom&) = delete;
 
   void Fill(std::uint8_t* output, std::size_t size) {
-    RequireSuccess(mbedtls_ctr_drbg_seed(&generator_, mbedtls_entropy_func,
-                                         &entropy_, nullptr, 0),
-                   "la inicialización del generador aleatorio");
-    RequireSuccess(mbedtls_ctr_drbg_random(&generator_, output, size),
-                   "la generación de bytes aleatorios");
+    CryptoPrimitives::RequireSuccess(
+        mbedtls_ctr_drbg_seed(&generator_, mbedtls_entropy_func, &entropy_,
+                              nullptr, 0),
+        "la inicialización del generador aleatorio");
+    CryptoPrimitives::RequireSuccess(
+        mbedtls_ctr_drbg_random(&generator_, output, size),
+        "la generación de bytes aleatorios");
   }
 
  private:
@@ -71,18 +63,17 @@ PasswordHasher::Credentials PasswordHasher::Create(
   return Credentials{Derive(password, salt), salt};
 }
 
-// Una comparación normal termina en el primer byte distinto, y ese tiempo le
-// daría a un atacante pistas sobre el hash. Esta siempre recorre todos los bytes.
 bool PasswordHasher::Verify(const std::string& password, const Hash& expected,
                             const Salt& salt) const {
   const Hash actual = Derive(password, salt);
-  return mbedtls_ct_memcmp(actual.data(), expected.data(), actual.size()) == 0;
+  return CryptoPrimitives::ConstantTimeEquals(actual.data(), expected.data(),
+                                              actual.size());
 }
 
 PasswordHasher::Hash PasswordHasher::Derive(const std::string& password,
                                             const Salt& salt) const {
   Hash hash{};
-  RequireSuccess(
+  CryptoPrimitives::RequireSuccess(
       mbedtls_pkcs5_pbkdf2_hmac_ext(
           MBEDTLS_MD_SHA256,
           reinterpret_cast<const unsigned char*>(password.data()),
