@@ -2,12 +2,15 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "tecflix/users/domain/user_error.hpp"
 #include "tecflix/users/domain/user_validator.hpp"
@@ -469,6 +472,78 @@ TEST(UserServiceRestartTest, EverythingSurvivesARestart) {
   EXPECT_EQ(ErrorOf([&] { service.Get(beto_id); }),
             UserErrorCode::kUserNotFound);
   EXPECT_GT(service.Register(Beto()).id, beto_id);
+}
+
+constexpr int kThreadCount = 8;
+constexpr int kOperationsPerThread = 50;
+
+void RunInParallel(const std::function<void(int)>& work) {
+  std::vector<std::thread> threads;
+  for (int thread = 0; thread < kThreadCount; ++thread) {
+    threads.emplace_back(work, thread);
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+}
+
+TEST_F(UserServiceTest, ConcurrentReservationsLoseNoBytes) {
+  const UserProfile ana = service_.Register(Ana());
+
+  RunInParallel([&](int) {
+    for (int operation = 0; operation < kOperationsPerThread; ++operation) {
+      service_.ReserveSpace(ana.id, kUsedBytes);
+    }
+  });
+
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes,
+            kUsedBytes * kThreadCount * kOperationsPerThread);
+}
+
+TEST_F(UserServiceTest, ConcurrentReservationsNeverPassTheQuota) {
+  const UserProfile ana = service_.Register(Ana());
+  // Solo la mitad de los hilos puede lograrlo.
+  const std::uint64_t bytes = UserService::kQuotaBytes / (kThreadCount / 2);
+  std::atomic<int> accepted{0};
+
+  RunInParallel([&](int) {
+    if (!ErrorOf([&] { service_.ReserveSpace(ana.id, bytes); })) {
+      ++accepted;
+    }
+  });
+
+  EXPECT_EQ(accepted, kThreadCount / 2);
+  EXPECT_EQ(service_.GetQuota(ana.id).used_bytes, UserService::kQuotaBytes);
+}
+
+TEST_F(UserServiceTest, ConcurrentRegistrationsOfOneUsernameCreateOneUser) {
+  std::atomic<int> accepted{0};
+
+  RunInParallel([&](int thread) {
+    const std::string email = "ana" + std::to_string(thread) + "@tecflix.cr";
+    if (!ErrorOf([&] { service_.Register({"ana", email, kPassword}); })) {
+      ++accepted;
+    }
+  });
+
+  EXPECT_EQ(accepted, 1);
+}
+
+TEST_F(UserServiceTest, ConcurrentRegistrationsAndLoginsKeepTheIndexesValid) {
+  RunInParallel([&](int thread) {
+    for (int operation = 0; operation < kOperationsPerThread; ++operation) {
+      const std::string name = "u" + std::to_string(thread) + "-" +
+                               std::to_string(operation);
+      const UserProfile user =
+          service_.Register({name, name + "@tecflix.cr", kPassword});
+      EXPECT_EQ(service_.Authenticate(name, kPassword).id, user.id);
+    }
+  });
+
+  const std::uint64_t total = kThreadCount * kOperationsPerThread;
+  for (std::uint64_t id = 1; id <= total; ++id) {
+    EXPECT_EQ(service_.Get(id).id, id);
+  }
 }
 
 TEST(UserServiceClockTest, SystemClockReturnsACurrentTimestamp) {

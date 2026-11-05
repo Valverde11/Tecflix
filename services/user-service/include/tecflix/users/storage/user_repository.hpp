@@ -30,7 +30,8 @@ struct CreateResult {
 // peor caso, un registro huérfano o un valor reservado de más, pero nunca dos
 // usuarios alcanzables con el mismo username o email.
 //
-// No es segura entre hilos: la capa REST debe protegerla con un mutex.
+// No es segura entre hilos, ni siquiera para leer: buscar mueve la posición de
+// los archivos abiertos. UserService protege cada acceso con un mutex.
 class UserRepository {
  public:
   static constexpr const char* kDataFileName = "users.dat";

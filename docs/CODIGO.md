@@ -590,3 +590,42 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 - Calcular `-delta` con el mínimo de `int64` es comportamiento indefinido, porque su positivo no existe en `int64`. `Magnitude` hace la resta en `uint64`, donde dar la vuelta está definido y el resultado es correcto.
 
 **Pruebas:** 15 nuevas. 10 de la ruta (reservar, liberar, 413, 409, extremos del rango, deltas inválidos, token de usuario, token incorrecto, usuario inexistente, lectura por servicio), 4 de `ServiceTokenVerifier` y 1 de `Config`.
+
+### U4.4 — CORS
+
+**Qué problema resuelve.** La web corre en `localhost:5173` y la API en `localhost:8081`. Para el navegador son orígenes distintos, y por seguridad esconde la respuesta salvo que la API autorice ese origen. CORS lo aplica el navegador: no protege de un `curl`, solo decide qué páginas pueden leer las respuestas.
+
+**Dos partes.**
+- `Access-Control-Allow-Origin` va en las **cabeceras por defecto** del servidor, así que también lo llevan los errores. Si solo estuviera en las respuestas exitosas, el navegador escondería los errores y la web no podría mostrar "el usuario ya existe".
+- **Consulta previa (preflight).** Antes de una petición con `Authorization` o JSON, el navegador envía un `OPTIONS` preguntando si puede hacerla. La ruta `OPTIONS` responde 204 con los métodos y cabeceras permitidos. `Access-Control-Max-Age` evita repetir la pregunta durante 10 minutos.
+
+**Un solo origen, nunca `*`.** Viene de `CORS_ORIGIN` y cada despliegue configura el suyo.
+
+**`X-Service-Token` no está permitido.** Solo se usa entre servicios, así que el navegador no tiene motivo para enviarlo. Una prueba lo verifica.
+
+**Pruebas:** 3 nuevas: origen en respuestas exitosas, origen en errores, y consulta previa.
+
+### U4.5 — Concurrencia
+
+**El problema.** httplib atiende cada petición en un hilo de su pool, y `UserRepository` no es segura entre hilos. Ni siquiera dos lecturas pueden ir juntas: una búsqueda mueve la posición de los archivos abiertos, y otro hilo leería de una posición ajena. Por eso se usa `std::mutex` y no `shared_mutex`: permitir lectores simultáneos sería un error, no una optimización.
+
+**Dónde vive el candado.** En `UserService`, no en el repositorio ni en el controlador, porque es la clase que conoce las dos cosas que importan:
+- **Qué debe ser atómico.** `ReserveSpace` lee, valida y escribe. Si el candado estuviera en el repositorio, cada paso estaría protegido, pero otro hilo podría entrar entre leer y escribir: dos subidas pasarían la validación y una suma se perdería. Por eso el candado cubre la operación completa.
+- **Qué es lento.** El hash tarda casi un segundo. Con el candado tomado, cada login detendría a todo el servicio.
+
+**El hash, fuera del candado.**
+- `Register` calcula el hash y después toma el candado.
+- `Update` también lo calcula antes. El costo es que cambiar la contraseña de un usuario inexistente gasta un hash, pero esa ruta exige ser dueño.
+- `Authenticate` toma el candado solo para buscar, dentro de un bloque con llaves; al salir del bloque, `lock_guard` lo suelta (RAII). El registro leído es una copia, así que verificar la contraseña no necesita el repositorio.
+
+**Sin riesgo de bloqueo mutuo.** Hay un único mutex y ningún método público llama a otro público con el candado tomado. Para eso `LoadUser` es privado y no lo toma: lo tiene quien lo llama. Si lo tomara, `ReserveSpace` se bloquearía contra sí mismo.
+
+**Si algo lanza excepción.** `lock_guard` suelta el mutex al destruirse, también cuando se lanza `kQuotaExceeded`.
+
+**Limitaciones conocidas.**
+- Todo acceso al disco es serial. A la escala del proyecto basta; es candidato para las optimizaciones de V2.0.
+- Con 2 máquinas en V2.0, el mutex no protege entre procesos: habrá que definir cómo se comparten los archivos.
+
+**Pruebas:** 4 nuevas con 8 hilos: reservas simultáneas sin perder bytes, nunca pasar la cuota, un solo ganador por username, y registros con login simultáneos con los índices intactos.
+
+**Comprobado por mutación.** Se quitó temporalmente el candado de `ReserveSpace`: el proceso de pruebas abortó por el acceso simultáneo al archivo. Las pruebas sí detectan la falta del candado.
