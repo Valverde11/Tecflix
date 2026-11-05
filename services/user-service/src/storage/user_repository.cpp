@@ -1,5 +1,8 @@
 #include "tecflix/users/storage/user_repository.hpp"
 
+#include <mbedtls/sha256.h>
+
+#include <algorithm>
 #include <stdexcept>
 #include <system_error>
 
@@ -9,6 +12,9 @@ namespace tecflix::users {
 namespace {
 
 constexpr std::uint64_t kFirstUserId = 1;
+constexpr int kUseSha256 = 0;  // la misma función de Mbed TLS calcula SHA-224 con 1
+
+static_assert(BTreeKey::kSize == 32, "SHA-256 produce exactamente 32 bytes");
 
 const std::filesystem::path& PrepareDirectory(
     const std::filesystem::path& directory) {
@@ -29,24 +35,56 @@ void RequireInserted(bool inserted) {
   }
 }
 
+// Solo ASCII a propósito: std::tolower depende del locale del proceso, y la
+// misma clave debe generarse igual en cualquier máquina.
+std::string ToLowerAscii(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(), [](char character) {
+    return character >= 'A' && character <= 'Z'
+               ? static_cast<char>(character - 'A' + 'a')
+               : character;
+  });
+  return text;
+}
+
+BTreeKey UsernameKey(const std::string& username) {
+  return BTreeKey::FromString(ToLowerAscii(username));
+}
+
+BTreeKey EmailKey(const std::string& email) {
+  const std::string normalized = ToLowerAscii(email);
+  BTreeKey::Storage digest{};
+  const int result = mbedtls_sha256(
+      reinterpret_cast<const unsigned char*>(normalized.data()),
+      normalized.size(), digest.data(), kUseSha256);
+  if (result != 0) {
+    throw StorageError("No se pudo calcular la clave del email");
+  }
+  return BTreeKey(digest);
+}
+
 }  // namespace
 
 UserRepository::UserRepository(const std::filesystem::path& directory,
                                std::uint32_t degree)
     : data_(PrepareDirectory(directory) / kDataFileName),
       by_id_(directory / kIdIndexFileName, degree),
-      by_username_(directory / kUsernameIndexFileName, degree) {}
+      by_username_(directory / kUsernameIndexFileName, degree),
+      by_email_(directory / kEmailIndexFileName, degree) {}
 
-// Orden: datos, índice por username, índice por id. Una caída tras escribir los
-// datos deja un registro huérfano que nadie encuentra, y como el id sale del
-// total de registros, ese id tampoco se repite. El username va antes que el id
-// porque es lo que impide duplicados: un usuario alcanzable siempre tiene su
-// nombre reservado. Una clave vieja de un Remove interrumpido cuenta como
-// ocupada: reservar el nombre de más es mejor que duplicarlo.
-std::optional<UserRecord> UserRepository::Create(const UserRecord& draft) {
-  const BTreeKey username_key = BTreeKey::FromString(draft.username);
+// Orden: datos, email, username, id. Un usuario solo se alcanza por username o
+// por id, y esas claves van al final, así que todo usuario alcanzable ya tiene
+// sus valores únicos reservados. Una caída antes deja un registro huérfano que
+// nadie encuentra; como el id sale del total de registros, tampoco se repite.
+// Una clave vieja de un Remove interrumpido cuenta como ocupada: reservar de más
+// es mejor que duplicar.
+CreateResult UserRepository::Create(const UserRecord& draft) {
+  const BTreeKey username_key = UsernameKey(draft.username);
+  const BTreeKey email_key = EmailKey(draft.email);
   if (by_username_.Search(username_key)) {
-    return std::nullopt;
+    return {WriteStatus::kUsernameTaken, std::nullopt};
+  }
+  if (by_email_.Search(email_key)) {
+    return {WriteStatus::kEmailTaken, std::nullopt};
   }
 
   UserRecord record = draft;
@@ -56,9 +94,10 @@ std::optional<UserRecord> UserRepository::Create(const UserRecord& draft) {
   record.deleted = false;
 
   const std::uint64_t index = data_.Append(record);
+  RequireInserted(by_email_.Insert(email_key, index));
   RequireInserted(by_username_.Insert(username_key, index));
   RequireInserted(by_id_.Insert(BTreeKey::FromId(record.id), index));
-  return record;
+  return {WriteStatus::kSuccess, record};
 }
 
 std::optional<UserRecord> UserRepository::FindById(std::uint64_t id) {
@@ -68,39 +107,56 @@ std::optional<UserRecord> UserRepository::FindById(std::uint64_t id) {
 
 std::optional<UserRecord> UserRepository::FindByUsername(
     const std::string& username) {
-  const auto index = by_username_.Search(BTreeKey::FromString(username));
+  const auto index = by_username_.Search(UsernameKey(username));
   return index ? ReadLive(*index) : std::nullopt;
 }
 
-// Al renombrar, el nombre nuevo se reserva antes de tocar los datos: así nadie
-// más puede tomarlo si el proceso se cae entre ambas escrituras.
-UpdateResult UserRepository::Update(const UserRecord& record) {
+// Los valores nuevos se reservan antes de tocar los datos: así nadie más puede
+// tomarlos si el proceso se cae entre ambas escrituras. Se comparan las claves y
+// no los textos porque pasar de "ana" a "Ana" no cambia el índice.
+WriteStatus UserRepository::Update(const UserRecord& record) {
   if (record.deleted) {
     throw std::invalid_argument("Update no puede eliminar usuarios; usar Remove");
   }
   // Serialize valida los tamaños. Debe fallar aquí, antes de cambiar un índice,
-  // y no en WriteAt, cuando el nombre nuevo ya estaría reservado.
+  // y no en WriteAt, cuando los valores nuevos ya estarían reservados.
   static_cast<void>(record.Serialize());
-  const BTreeKey new_key = BTreeKey::FromString(record.username);
+  const BTreeKey new_username_key = UsernameKey(record.username);
+  const BTreeKey new_email_key = EmailKey(record.email);
 
   const auto index = by_id_.Search(BTreeKey::FromId(record.id));
   if (!index) {
-    return UpdateResult::kNotFound;
+    return WriteStatus::kNotFound;
   }
   const auto current = ReadLive(*index);
   if (!current) {
-    return UpdateResult::kNotFound;
+    return WriteStatus::kNotFound;
   }
 
-  const bool renamed = record.username != current->username;
-  if (renamed && !by_username_.Insert(new_key, *index)) {
-    return UpdateResult::kUsernameTaken;
+  const BTreeKey old_username_key = UsernameKey(current->username);
+  const BTreeKey old_email_key = EmailKey(current->email);
+  const bool username_changed = new_username_key != old_username_key;
+  const bool email_changed = new_email_key != old_email_key;
+
+  if (username_changed && !by_username_.Insert(new_username_key, *index)) {
+    return WriteStatus::kUsernameTaken;
   }
+  if (email_changed && !by_email_.Insert(new_email_key, *index)) {
+    if (username_changed) {
+      by_username_.Remove(new_username_key);
+    }
+    return WriteStatus::kEmailTaken;
+  }
+
   data_.WriteAt(*index, record);
-  if (renamed) {
-    by_username_.Remove(BTreeKey::FromString(current->username));
+
+  if (username_changed) {
+    by_username_.Remove(old_username_key);
   }
-  return UpdateResult::kUpdated;
+  if (email_changed) {
+    by_email_.Remove(old_email_key);
+  }
+  return WriteStatus::kSuccess;
 }
 
 // Primero se marca el registro: desde ese momento el usuario ya no existe para
@@ -120,7 +176,8 @@ bool UserRepository::Remove(std::uint64_t id) {
 
   record->deleted = true;
   data_.WriteAt(*index, *record);
-  by_username_.Remove(BTreeKey::FromString(record->username));
+  by_email_.Remove(EmailKey(record->email));
+  by_username_.Remove(UsernameKey(record->username));
   by_id_.Remove(id_key);
   return true;
 }

@@ -35,6 +35,13 @@ UserRecord Draft(const std::string& username) {
   return record;
 }
 
+UserRecord DraftWithEmail(const std::string& username,
+                          const std::string& email) {
+  UserRecord record = Draft(username);
+  record.email = email;
+  return record;
+}
+
 class UserRepositoryTest : public ::testing::Test {
  protected:
   std::filesystem::path Directory() const { return temp_.Path(); }
@@ -46,6 +53,9 @@ class UserRepositoryTest : public ::testing::Test {
   }
   std::filesystem::path UsernameIndexPath() const {
     return Directory() / UserRepository::kUsernameIndexFileName;
+  }
+  std::filesystem::path EmailIndexPath() const {
+    return Directory() / UserRepository::kEmailIndexFileName;
   }
 
   // Se llama con el repositorio ya cerrado.
@@ -74,8 +84,8 @@ TEST_F(UserRepositoryTest, FailsWhenDirectoryPathIsAFile) {
 TEST_F(UserRepositoryTest, CreateAssignsConsecutiveIdsStartingAtOne) {
   UserRepository repository(Directory(), kSmallDegree);
 
-  EXPECT_EQ(repository.Create(Draft("ana"))->id, 1u);
-  EXPECT_EQ(repository.Create(Draft("beto"))->id, 2u);
+  EXPECT_EQ(repository.Create(Draft("ana")).user->id, 1u);
+  EXPECT_EQ(repository.Create(Draft("beto")).user->id, 2u);
 }
 
 TEST_F(UserRepositoryTest, CreateIgnoresIdAndDeletedFromTheDraft) {
@@ -84,7 +94,7 @@ TEST_F(UserRepositoryTest, CreateIgnoresIdAndDeletedFromTheDraft) {
   draft.id = kIgnoredId;
   draft.deleted = true;
 
-  const auto created = repository.Create(draft);
+  const auto created = repository.Create(draft).user;
 
   ASSERT_TRUE(created);
   EXPECT_EQ(created->id, 1u);
@@ -94,7 +104,7 @@ TEST_F(UserRepositoryTest, CreateIgnoresIdAndDeletedFromTheDraft) {
 
 TEST_F(UserRepositoryTest, FindsCreatedUserByIdAndByUsername) {
   UserRepository repository(Directory(), kSmallDegree);
-  const auto created = repository.Create(Draft("ana"));
+  const auto created = repository.Create(Draft("ana")).user;
   ASSERT_TRUE(created);
 
   EXPECT_EQ(repository.FindById(created->id), created);
@@ -118,9 +128,9 @@ TEST_F(UserRepositoryTest, FindRejectsUsernameThatCannotBeAKey) {
 TEST_F(UserRepositoryTest, DuplicateUsernameWritesNothing) {
   {
     UserRepository repository(Directory(), kSmallDegree);
-    ASSERT_TRUE(repository.Create(Draft("ana")));
+    ASSERT_TRUE(repository.Create(Draft("ana")).user);
 
-    EXPECT_FALSE(repository.Create(Draft("ana")));
+    EXPECT_FALSE(repository.Create(Draft("ana")).user);
   }
 
   EXPECT_EQ(StoredRecords(), 1u);
@@ -143,11 +153,11 @@ TEST_F(UserRepositoryTest, InvalidFieldsInCreateWriteNothing) {
 
 TEST_F(UserRepositoryTest, UpdateChangesFieldsAndKeepsIndexes) {
   UserRepository repository(Directory(), kSmallDegree);
-  UserRecord changed = *repository.Create(Draft("ana"));
+  UserRecord changed = *repository.Create(Draft("ana")).user;
   changed.email = "nuevo@tecflix.cr";
   changed.used_bytes = kUsedBytes;
 
-  EXPECT_EQ(repository.Update(changed), UpdateResult::kUpdated);
+  EXPECT_EQ(repository.Update(changed), WriteStatus::kSuccess);
 
   EXPECT_EQ(repository.FindById(changed.id), changed);
   EXPECT_EQ(repository.FindByUsername("ana"), changed);
@@ -155,25 +165,25 @@ TEST_F(UserRepositoryTest, UpdateChangesFieldsAndKeepsIndexes) {
 
 TEST_F(UserRepositoryTest, RenameMovesTheUsernameKey) {
   UserRepository repository(Directory(), kSmallDegree);
-  UserRecord renamed = *repository.Create(Draft("ana"));
+  UserRecord renamed = *repository.Create(Draft("ana")).user;
   renamed.username = "ana_nueva";
 
-  EXPECT_EQ(repository.Update(renamed), UpdateResult::kUpdated);
+  EXPECT_EQ(repository.Update(renamed), WriteStatus::kSuccess);
 
   EXPECT_FALSE(repository.FindByUsername("ana"));
   EXPECT_EQ(repository.FindByUsername("ana_nueva"), renamed);
   EXPECT_EQ(repository.FindById(renamed.id), renamed);
-  EXPECT_TRUE(repository.Create(Draft("ana")));
+  EXPECT_TRUE(repository.Create(DraftWithEmail("ana", "otra@tecflix.cr")).user);
 }
 
 TEST_F(UserRepositoryTest, RenameToATakenUsernameChangesNothing) {
   UserRepository repository(Directory(), kSmallDegree);
-  const UserRecord ana = *repository.Create(Draft("ana"));
-  const UserRecord beto = *repository.Create(Draft("beto"));
+  const UserRecord ana = *repository.Create(Draft("ana")).user;
+  const UserRecord beto = *repository.Create(Draft("beto")).user;
   UserRecord conflicting = beto;
   conflicting.username = "ana";
 
-  EXPECT_EQ(repository.Update(conflicting), UpdateResult::kUsernameTaken);
+  EXPECT_EQ(repository.Update(conflicting), WriteStatus::kUsernameTaken);
 
   EXPECT_EQ(repository.FindById(beto.id), beto);
   EXPECT_EQ(repository.FindByUsername("ana"), ana);
@@ -185,13 +195,13 @@ TEST_F(UserRepositoryTest, UpdateOfUnknownUserReportsNotFound) {
   UserRecord unknown = Draft("ana");
   unknown.id = kMissingId;
 
-  EXPECT_EQ(repository.Update(unknown), UpdateResult::kNotFound);
+  EXPECT_EQ(repository.Update(unknown), WriteStatus::kNotFound);
   EXPECT_FALSE(repository.FindByUsername("ana"));
 }
 
 TEST_F(UserRepositoryTest, UpdateCannotDeleteUsers) {
   UserRepository repository(Directory(), kSmallDegree);
-  UserRecord record = *repository.Create(Draft("ana"));
+  UserRecord record = *repository.Create(Draft("ana")).user;
   record.deleted = true;
 
   EXPECT_THROW(repository.Update(record), std::invalid_argument);
@@ -201,7 +211,7 @@ TEST_F(UserRepositoryTest, UpdateCannotDeleteUsers) {
 // El nombre nuevo no debe quedar reservado si el resto del registro es inválido.
 TEST_F(UserRepositoryTest, InvalidRenameLeavesIndexesUntouched) {
   UserRepository repository(Directory(), kSmallDegree);
-  const UserRecord original = *repository.Create(Draft("ana"));
+  const UserRecord original = *repository.Create(Draft("ana")).user;
   UserRecord invalid = original;
   invalid.username = "ana_nueva";
   invalid.email.assign(UserRecord::kEmailSize + 1, 'e');
@@ -214,18 +224,18 @@ TEST_F(UserRepositoryTest, InvalidRenameLeavesIndexesUntouched) {
 
 TEST_F(UserRepositoryTest, RemovedUserIsNoLongerFound) {
   UserRepository repository(Directory(), kSmallDegree);
-  const UserRecord record = *repository.Create(Draft("ana"));
+  const UserRecord record = *repository.Create(Draft("ana")).user;
 
   EXPECT_TRUE(repository.Remove(record.id));
 
   EXPECT_FALSE(repository.FindById(record.id));
   EXPECT_FALSE(repository.FindByUsername("ana"));
-  EXPECT_EQ(repository.Update(record), UpdateResult::kNotFound);
+  EXPECT_EQ(repository.Update(record), WriteStatus::kNotFound);
 }
 
 TEST_F(UserRepositoryTest, RemoveReportsUnknownUsers) {
   UserRepository repository(Directory(), kSmallDegree);
-  const UserRecord record = *repository.Create(Draft("ana"));
+  const UserRecord record = *repository.Create(Draft("ana")).user;
   ASSERT_TRUE(repository.Remove(record.id));
 
   EXPECT_FALSE(repository.Remove(record.id));
@@ -234,10 +244,10 @@ TEST_F(UserRepositoryTest, RemoveReportsUnknownUsers) {
 
 TEST_F(UserRepositoryTest, RemovedUsernameIsFreeButItsIdIsNotReused) {
   UserRepository repository(Directory(), kSmallDegree);
-  const UserRecord first = *repository.Create(Draft("ana"));
+  const UserRecord first = *repository.Create(Draft("ana")).user;
   ASSERT_TRUE(repository.Remove(first.id));
 
-  const auto second = repository.Create(Draft("ana"));
+  const auto second = repository.Create(Draft("ana")).user;
 
   ASSERT_TRUE(second);
   EXPECT_NE(second->id, first.id);
@@ -250,8 +260,8 @@ TEST_F(UserRepositoryTest, DataSurvivesReopenAndIdsContinue) {
   std::uint64_t removed_id = 0;
   {
     UserRepository repository(Directory(), kSmallDegree);
-    kept = *repository.Create(Draft("ana"));
-    removed_id = repository.Create(Draft("beto"))->id;
+    kept = *repository.Create(Draft("ana")).user;
+    removed_id = repository.Create(Draft("beto")).user->id;
     ASSERT_TRUE(repository.Remove(removed_id));
   }
 
@@ -260,7 +270,7 @@ TEST_F(UserRepositoryTest, DataSurvivesReopenAndIdsContinue) {
   EXPECT_EQ(reopened.FindById(kept.id), kept);
   EXPECT_EQ(reopened.FindByUsername("ana"), kept);
   EXPECT_FALSE(reopened.FindById(removed_id));
-  EXPECT_EQ(reopened.Create(Draft("carla"))->id, removed_id + 1);
+  EXPECT_EQ(reopened.Create(Draft("carla")).user->id, removed_id + 1);
 }
 
 // Simula una caída en Remove después de marcar el registro y antes de limpiar
@@ -269,7 +279,7 @@ TEST_F(UserRepositoryTest, InterruptedRemoveHidesUserAndKeepsUsernameReserved) {
   UserRecord record;
   {
     UserRepository repository(Directory(), kSmallDegree);
-    record = *repository.Create(Draft("ana"));
+    record = *repository.Create(Draft("ana")).user;
   }
   {
     UserDataFile data(DataPath());
@@ -283,7 +293,7 @@ TEST_F(UserRepositoryTest, InterruptedRemoveHidesUserAndKeepsUsernameReserved) {
   EXPECT_FALSE(repository.FindById(record.id));
   EXPECT_FALSE(repository.FindByUsername("ana"));
   EXPECT_FALSE(repository.Remove(record.id));
-  EXPECT_FALSE(repository.Create(Draft("ana")));
+  EXPECT_FALSE(repository.Create(Draft("ana")).user);
 }
 
 // Simula una caída en Create después de escribir en users.dat y antes de los
@@ -302,16 +312,16 @@ TEST_F(UserRepositoryTest, OrphanRecordFromInterruptedCreateDoesNotCollide) {
   UserRepository repository(Directory(), kSmallDegree);
 
   EXPECT_FALSE(repository.FindById(1));
-  const auto created = repository.Create(Draft("ana"));
+  const auto created = repository.Create(Draft("ana")).user;
   ASSERT_TRUE(created);
   EXPECT_EQ(created->id, 2u);
   EXPECT_EQ(repository.FindByUsername("ana"), created);
 }
 
 // Interrumpe Create de verdad: el id 1 ya está en el índice, así que el Insert
-// por id falla. El username debe haberse guardado antes; si no, un segundo
-// intento lo encontraría libre y habría dos registros con el mismo nombre.
-TEST_F(UserRepositoryTest, FailedCreateKeepsTheUsernameReserved) {
+// por id falla. Username y email deben haberse guardado antes; si no, un segundo
+// intento los encontraría libres y habría dos registros con el mismo valor.
+TEST_F(UserRepositoryTest, FailedCreateKeepsUsernameAndEmailReserved) {
   {
     UserRepository repository(Directory(), kSmallDegree);
   }
@@ -323,14 +333,114 @@ TEST_F(UserRepositoryTest, FailedCreateKeepsTheUsernameReserved) {
   UserRepository repository(Directory(), kSmallDegree);
 
   EXPECT_THROW(repository.Create(Draft("ana")), StorageError);
-  EXPECT_FALSE(repository.Create(Draft("ana")));
+  EXPECT_EQ(repository.Create(DraftWithEmail("ana", "otro@tecflix.cr")).status,
+            WriteStatus::kUsernameTaken);
+  EXPECT_EQ(repository.Create(DraftWithEmail("beto", "ana@tecflix.cr")).status,
+            WriteStatus::kEmailTaken);
+}
+
+TEST_F(UserRepositoryTest, UsernameIsUniqueIgnoringCase) {
+  UserRepository repository(Directory(), kSmallDegree);
+  ASSERT_TRUE(repository.Create(DraftWithEmail("Ana", "a@tecflix.cr")).user);
+
+  const auto result = repository.Create(DraftWithEmail("aNA", "b@tecflix.cr"));
+
+  EXPECT_EQ(result.status, WriteStatus::kUsernameTaken);
+  EXPECT_FALSE(result.user);
+}
+
+TEST_F(UserRepositoryTest, FindIgnoresCaseAndKeepsTheOriginalSpelling) {
+  UserRepository repository(Directory(), kSmallDegree);
+  ASSERT_TRUE(repository.Create(Draft("Ana")).user);
+
+  const auto found = repository.FindByUsername("ANA");
+
+  ASSERT_TRUE(found);
+  EXPECT_EQ(found->username, "Ana");
+}
+
+TEST_F(UserRepositoryTest, EmailIsUniqueIgnoringCaseAndWritesNothing) {
+  {
+    UserRepository repository(Directory(), kSmallDegree);
+    ASSERT_TRUE(repository.Create(DraftWithEmail("ana", "Ana@Tecflix.cr")).user);
+
+    const auto result =
+        repository.Create(DraftWithEmail("beto", "ana@tecflix.CR"));
+
+    EXPECT_EQ(result.status, WriteStatus::kEmailTaken);
+    EXPECT_FALSE(repository.FindByUsername("beto"));
+  }
+
+  EXPECT_EQ(StoredRecords(), 1u);
+}
+
+// Un hash de todo el email las distingue; una clave truncada a 32 bytes, no.
+TEST_F(UserRepositoryTest, LongEmailsThatShareTheirStartAreDifferent) {
+  const std::string shared_start(UserRecord::kEmailSize - 12, 'a');
+  UserRepository repository(Directory(), kSmallDegree);
+
+  EXPECT_TRUE(
+      repository.Create(DraftWithEmail("ana", shared_start + "1@tecflix.cr")).user);
+  EXPECT_TRUE(
+      repository.Create(DraftWithEmail("beto", shared_start + "2@tecflix.cr")).user);
+}
+
+TEST_F(UserRepositoryTest, ChangingOnlyTheCaseKeepsUsernameAndEmailValid) {
+  UserRepository repository(Directory(), kSmallDegree);
+  UserRecord record = *repository.Create(Draft("ana")).user;
+  record.username = "ANA";
+  record.email = "ANA@tecflix.cr";
+
+  EXPECT_EQ(repository.Update(record), WriteStatus::kSuccess);
+
+  EXPECT_EQ(repository.FindByUsername("ana"), record);
+  EXPECT_EQ(repository.Create(DraftWithEmail("beto", "ana@tecflix.cr")).status,
+            WriteStatus::kEmailTaken);
+}
+
+TEST_F(UserRepositoryTest, ChangingEmailFreesTheOldOneAndReservesTheNewOne) {
+  UserRepository repository(Directory(), kSmallDegree);
+  UserRecord record = *repository.Create(Draft("ana")).user;
+  record.email = "nuevo@tecflix.cr";
+
+  ASSERT_EQ(repository.Update(record), WriteStatus::kSuccess);
+
+  EXPECT_EQ(repository.Create(DraftWithEmail("beto", "nuevo@tecflix.cr")).status,
+            WriteStatus::kEmailTaken);
+  EXPECT_TRUE(repository.Create(DraftWithEmail("carla", "ana@tecflix.cr")).user);
+}
+
+// El username nuevo ya se reservó cuando se descubre que el email está ocupado:
+// hay que soltarlo o quedaría reservado sin ningún usuario.
+TEST_F(UserRepositoryTest, TakenEmailInUpdateReleasesTheNewUsername) {
+  UserRepository repository(Directory(), kSmallDegree);
+  ASSERT_TRUE(repository.Create(Draft("ana")).user);
+  const UserRecord beto = *repository.Create(Draft("beto")).user;
+  UserRecord conflicting = beto;
+  conflicting.username = "beto_nuevo";
+  conflicting.email = "ana@tecflix.cr";
+
+  EXPECT_EQ(repository.Update(conflicting), WriteStatus::kEmailTaken);
+
+  EXPECT_EQ(repository.FindById(beto.id), beto);
+  EXPECT_EQ(repository.FindByUsername("beto"), beto);
+  EXPECT_FALSE(repository.FindByUsername("beto_nuevo"));
+  EXPECT_TRUE(repository.Create(Draft("beto_nuevo")).user);
+}
+
+TEST_F(UserRepositoryTest, RemovedEmailIsFree) {
+  UserRepository repository(Directory(), kSmallDegree);
+  const UserRecord record = *repository.Create(Draft("ana")).user;
+  ASSERT_TRUE(repository.Remove(record.id));
+
+  EXPECT_TRUE(repository.Create(DraftWithEmail("beto", "ana@tecflix.cr")).user);
 }
 
 TEST_F(UserRepositoryTest, IndexesStayValidAfterManyOperations) {
   {
     UserRepository repository(Directory(), kSmallDegree);
     for (std::uint64_t i = 1; i <= kManyUsers; ++i) {
-      ASSERT_EQ(repository.Create(Draft("user" + std::to_string(i)))->id, i);
+      ASSERT_EQ(repository.Create(Draft("user" + std::to_string(i))).user->id, i);
     }
     for (std::uint64_t i = 2; i <= kManyUsers; i += 2) {
       ASSERT_TRUE(repository.Remove(i));
@@ -344,7 +454,9 @@ TEST_F(UserRepositoryTest, IndexesStayValidAfterManyOperations) {
   BTree by_id(IdIndexPath(), kSmallDegree);
   BTree by_username(UsernameIndexPath(), kSmallDegree);
   EXPECT_EQ(by_id.CheckInvariants(), kManyUsers / 2);
+  BTree by_email(EmailIndexPath(), kSmallDegree);
   EXPECT_EQ(by_username.CheckInvariants(), kManyUsers / 2);
+  EXPECT_EQ(by_email.CheckInvariants(), kManyUsers / 2);
   EXPECT_EQ(StoredRecords(), kManyUsers);
 }
 
