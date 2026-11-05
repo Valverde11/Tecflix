@@ -629,3 +629,13 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 **Pruebas:** 4 nuevas con 8 hilos: reservas simultáneas sin perder bytes, nunca pasar la cuota, un solo ganador por username, y registros con login simultáneos con los índices intactos.
 
 **Comprobado por mutación.** Se quitó temporalmente el candado de `ReserveSpace`: el proceso de pruebas abortó por el acceso simultáneo al archivo. Las pruebas sí detectan la falta del candado.
+
+### U4.6 — Pruebas de integración HTTP
+
+**Qué hace.** Casi todas las pruebas de U4 ya eran de integración: `HttpTestServer` levanta el servidor completo y llama por socket, con archivos reales. Esta tarea agrega las dos que cruzan varias rutas:
+- `CompleteAccountJourney` recorre la vida de una cuenta como lo harían la web y streaming: actualizar, reservar, consultar, liberar, eliminar y comprobar que el login ya no funciona.
+- `ConcurrentRequestsLoseNoBytes` envía 80 peticiones desde 8 clientes simultáneos y exige que no se pierda ninguna suma. Es la prueba de U4.5, pero pasando por el pool de hilos real de httplib.
+
+**Prueba manual del ejecutable.** Las pruebas no pasan por `main`, así que se ejecutó `user-service.exe` con `curl`. Se comprobó que un secreto corto impide arrancar, que funcionan salud, registro, login, `/users/me`, la cuota por servicio y la consulta previa de CORS, que el JWT de usuario recibe 401 en la ruta de la cuota, y que el consumo sigue igual después de matar y reiniciar el proceso.
+
+**Pruebas:** 2 nuevas; `ctest` queda en 260.

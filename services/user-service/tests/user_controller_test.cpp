@@ -2,9 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "http_test_server.hpp"
 
@@ -492,6 +495,61 @@ TEST_F(QuotaUsageTest, RejectsAWrongServiceToken) {
 
   ASSERT_TRUE(response);
   EXPECT_EQ(response->status, 401);
+}
+
+// Recorre la vida completa de una cuenta como lo harían la web y streaming.
+TEST_F(QuotaUsageTest, CompleteAccountJourney) {
+  const auto updated =
+      Put(UserPath(ana_.id), ana_.token, {{"username", "ana.maria"}});
+  ASSERT_TRUE(updated);
+  EXPECT_EQ(updated->status, 200);
+
+  ASSERT_TRUE(PostDelta(static_cast<std::int64_t>(kSomeBytes)));
+  const auto after_upload = Get(UserController::kMeRoute, ana_.token);
+  ASSERT_TRUE(after_upload);
+  const json profile = json::parse(after_upload->body);
+  EXPECT_EQ(profile["username"], "ana.maria");
+  EXPECT_EQ(profile["usedBytes"], kSomeBytes);
+
+  ASSERT_TRUE(PostDelta(-static_cast<std::int64_t>(kSomeBytes)));
+  const auto quota = Get(UserPath(ana_.id) + "/quota", ana_.token);
+  ASSERT_TRUE(quota);
+  EXPECT_EQ(json::parse(quota->body)["usedBytes"], 0);
+
+  const auto removal = Delete(UserPath(ana_.id), ana_.token);
+  ASSERT_TRUE(removal);
+  EXPECT_EQ(removal->status, 204);
+
+  const auto login = PostJson(UserController::kLoginRoute,
+                              {{"username", "ana.maria"},
+                               {"password", "secreta-123"}});
+  ASSERT_TRUE(login);
+  EXPECT_EQ(login->status, 401);
+}
+
+TEST_F(QuotaUsageTest, ConcurrentRequestsLoseNoBytes) {
+  constexpr int kClients = 8;
+  constexpr int kRequestsPerClient = 10;
+  std::atomic<int> accepted{0};
+
+  std::vector<std::thread> clients;
+  for (int client = 0; client < kClients; ++client) {
+    clients.emplace_back([&] {
+      for (int request = 0; request < kRequestsPerClient; ++request) {
+        const auto response = PostDelta(1);
+        if (response && response->status == 200) {
+          ++accepted;
+        }
+      }
+    });
+  }
+  for (auto& client : clients) {
+    client.join();
+  }
+
+  EXPECT_EQ(accepted, kClients * kRequestsPerClient);
+  EXPECT_EQ(users_.GetQuota(ana_.id).used_bytes,
+            static_cast<std::uint64_t>(kClients * kRequestsPerClient));
 }
 
 TEST_F(QuotaUsageTest, ReportsUnknownUser) {
