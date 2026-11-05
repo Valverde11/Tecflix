@@ -12,6 +12,8 @@ add_executable(user_service_tests
     user_data_file_test.cpp
     user_record_test.cpp
     user_repository_test.cpp
+    user_service_test.cpp
+    user_validator_test.cpp
     username_index_test.cpp
 )
 target_link_libraries(user_service_tests PRIVATE
