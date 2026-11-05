@@ -534,3 +534,19 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 **Errores que genera httplib.** Una ruta inexistente o un cuerpo demasiado grande no pasan por un controlador: llegan con el estado puesto y sin cuerpo. `FillEmptyBody` les da el mismo formato y respeta los cuerpos que ya existen, porque httplib lo llama para todo estado ≥ 400.
 
 **Pruebas:** 14 nuevas. Una por cada código de `UserErrorCode` (9), `ApiError`, 500 sin detalles, excepción de tipo desconocido, y los dos casos de `FillEmptyBody`. Además, la ruta inexistente ahora comprueba el JSON de error por HTTP real.
+
+### U4.1 — `UserController`: registro y login por HTTP
+
+**Qué hace.** Es la capa que traduce HTTP a llamadas de dominio: lee el JSON, llama a `UserService` y escribe la respuesta. No contiene reglas de negocio. `POST /api/users` responde 201 con el usuario, y `POST /api/auth/login` responde 200 con `{token, user}`.
+
+**Cómo se arman las piezas.** `main` crea los objetos en orden de dependencia: `UserRepository` → `UserService` → `AuthService` → `UserController` → `ApiServer`. Cada uno recibe por referencia lo que usa, y C++ destruye en orden inverso, así que nadie usa un objeto ya destruido. Aquí también empieza a aplicarse el mínimo de 32 bytes de `AUTH_SECRET`: si el secreto es corto, `AuthService` lanza una excepción y el servicio no arranca.
+
+**Validación en dos niveles.** El controlador solo revisa la **forma**: que el cuerpo sea un objeto JSON y que cada campo sea texto (`invalid_json`, `invalid_request`). El **contenido** lo valida `UserService` (`invalid_password`...). `json::parse` se llama sin excepciones porque un JSON mal escrito es un error esperado del cliente.
+
+**Límite de 16 KB por cuerpo.** La petición válida más grande ronda los 300 bytes. Sin límite, httplib acepta cuerpos enormes y cualquiera podría llenar la memoria del servidor con peticiones que ni siquiera necesitan autenticación.
+
+**Fechas.** El registro guarda segundos desde 1970 y `SPEC.md` pide ISO 8601 UTC, así que se convierten al responder. `std::gmtime` no sirve porque usa memoria compartida entre hilos y el servidor atiende varios a la vez. Sus versiones seguras tienen distinto nombre y orden de argumentos en Windows y Linux, y por eso hay un `#ifdef` encapsulado en `ToUtc`.
+
+**Pruebas de verdad por HTTP.** `HttpTestServer` levanta el servidor completo en un puerto libre con archivos reales en carpeta temporal, y el cliente llama por socket. Comprueban también que ninguna respuesta contenga contraseña ni salt, y que un login fallido sea idéntico byte a byte con usuario inexistente o con contraseña incorrecta.
+
+**Pruebas:** 11 nuevas.

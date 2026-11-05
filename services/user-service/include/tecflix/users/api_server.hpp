@@ -2,9 +2,11 @@
 
 #include <httplib.h>
 
+#include <cstddef>
 #include <string>
 
 #include "tecflix/users/health_controller.hpp"
+#include "tecflix/users/user_controller.hpp"
 
 namespace tecflix::users {
 
@@ -13,7 +15,12 @@ namespace tecflix::users {
 // abrir un puerto libre cualquiera y conocerlo antes de empezar a escuchar.
 class ApiServer {
  public:
-  ApiServer();
+  // Ningún cuerpo válido se acerca a este tamaño. Sin límite, httplib aceptaría
+  // cuerpos enormes y cualquiera podría llenar la memoria del servidor.
+  static constexpr std::size_t kMaxBodyBytes = 16 * 1024;
+
+  // users debe vivir más que este servidor.
+  explicit ApiServer(UserController& users);
 
   ApiServer(const ApiServer&) = delete;
   ApiServer& operator=(const ApiServer&) = delete;
