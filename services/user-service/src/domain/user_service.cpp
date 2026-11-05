@@ -101,6 +101,7 @@ UserProfile UserService::Register(const Registration& registration) {
   draft.created_at = clock_();
   ApplyCredentials(hasher_.Create(registration.password), draft);
 
+  const std::lock_guard lock(repository_mutex_);
   const CreateResult result = repository_.Create(draft);
   RequireSuccess(result.status);
   return ToProfile(*result.user);
@@ -115,7 +116,12 @@ UserProfile UserService::Authenticate(const std::string& username,
     ThrowInvalidCredentials();
   }
 
-  const auto record = repository_.FindByUsername(username);
+  std::optional<UserRecord> record;
+  {
+    // El bloque suelta el mutex antes de calcular el hash.
+    const std::lock_guard lock(repository_mutex_);
+    record = repository_.FindByUsername(username);
+  }
   if (!record) {
     // Sin este cálculo la respuesta tardaría microsegundos en vez de casi un
     // segundo, y medir el tiempo bastaría para saber qué usernames existen. El
@@ -130,12 +136,13 @@ UserProfile UserService::Authenticate(const std::string& username,
 }
 
 UserProfile UserService::Get(std::uint64_t id) {
+  const std::lock_guard lock(repository_mutex_);
   return ToProfile(LoadUser(id));
 }
 
 UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes) {
-  // Todo se valida antes de leer: una petición inválida no gasta el costo del
-  // hash ni revela si el usuario existe.
+  // Todo se valida antes de calcular el hash y de leer: una petición inválida no
+  // gasta ese costo ni revela si el usuario existe.
   if (changes.username) {
     RequireValidUsername(*changes.username);
   }
@@ -146,6 +153,12 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
     RequireValidPassword(*changes.password);
   }
 
+  std::optional<PasswordHasher::Credentials> credentials;
+  if (changes.password) {
+    credentials = hasher_.Create(*changes.password);
+  }
+
+  const std::lock_guard lock(repository_mutex_);
   UserRecord record = LoadUser(id);
   if (changes.username) {
     record.username = *changes.username;
@@ -153,8 +166,8 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
   if (changes.email) {
     record.email = *changes.email;
   }
-  if (changes.password) {
-    ApplyCredentials(hasher_.Create(*changes.password), record);
+  if (credentials) {
+    ApplyCredentials(*credentials, record);
   }
 
   RequireSuccess(repository_.Update(record));
@@ -162,16 +175,21 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
 }
 
 void UserService::Delete(std::uint64_t id) {
+  const std::lock_guard lock(repository_mutex_);
   if (!repository_.Remove(id)) {
     ThrowUserNotFound();
   }
 }
 
 QuotaUsage UserService::GetQuota(std::uint64_t id) {
+  const std::lock_guard lock(repository_mutex_);
   return ToQuotaUsage(LoadUser(id));
 }
 
 QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
+  // Leer, validar y escribir van bajo el mismo candado: si otra subida entrara
+  // entre medio, las dos pasarían la validación y una suma se perdería.
+  const std::lock_guard lock(repository_mutex_);
   UserRecord record = LoadUser(id);
   // Se compara contra lo disponible y no se suma used + bytes: bytes viene de
   // afuera y una suma cercana al máximo de uint64 daría la vuelta y pasaría.
@@ -185,6 +203,7 @@ QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
 }
 
 QuotaUsage UserService::ReleaseSpace(std::uint64_t id, std::uint64_t bytes) {
+  const std::lock_guard lock(repository_mutex_);
   UserRecord record = LoadUser(id);
   if (bytes > record.used_bytes) {
     throw UserError(UserErrorCode::kReleaseExceedsUsage,

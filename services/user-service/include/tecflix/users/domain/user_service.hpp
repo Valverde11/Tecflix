@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -43,6 +44,9 @@ struct QuotaUsage {
 // Reglas de negocio de los usuarios: valida los datos, protege la contraseña y
 // asigna la cuota. Todas las operaciones lanzan UserError si la petición no se
 // puede cumplir.
+//
+// Es segura entre hilos. El hash de la contraseña se calcula fuera del mutex:
+// tarda casi un segundo y, dentro, cada login detendría a todo el servicio.
 class UserService {
  public:
   // Devuelve los segundos desde 1970-01-01 UTC. Se inyecta para que las pruebas
@@ -78,10 +82,12 @@ class UserService {
   QuotaUsage ReleaseSpace(std::uint64_t id, std::uint64_t bytes);
 
  private:
-  // Lanza kUserNotFound si el usuario no existe.
+  // Lanza kUserNotFound si el usuario no existe. Quien la llama debe tener
+  // tomado repository_mutex_.
   UserRecord LoadUser(std::uint64_t id);
 
   UserRepository& repository_;
+  std::mutex repository_mutex_;
   PasswordHasher hasher_;
   Clock clock_;
 };
