@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
+  - job_name: otel-metrics
+    static_configs:
+      - targets: ["otel-collector:9464"]
+
+  - job_name: blackbox-exporter
+    static_configs:
+      - targets: ["blackbox-exporter:9115"]
+
+  # Health probe independiente del pipeline de métricas de cada API.
+  # En macOS/Windows con Docker Desktop, host.docker.internal apunta al host.
+  # En Linux Docker Engine puede requerirse extra_hosts: host.docker.internal:host-gateway
+  # en el servicio blackbox-exporter de docker-compose.yml.
+  - job_name: service-health
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://host.docker.internal:8090/health"]
+        labels:
+          service_name: sample-service
+          service_instance_id: local-dev
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
