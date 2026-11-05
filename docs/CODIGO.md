@@ -322,3 +322,37 @@ Los nombres de los casos son los de Cormen, cap. 18.3. En cada nodo, `RemoveFrom
 - **Prueba basada en modelo:** 2000 operaciones aleatorias con claves de texto contra un `std::map`. Luego se reabre el archivo y se verifican invariantes y contenido.
 
 **Error útil durante el desarrollo.** La primera versión de la prueba reabría el archivo con el grado por defecto y falló con "El índice fue creado con otro grado". El árbol hizo lo correcto: un archivo creado con un grado no debe interpretarse con otro. Se corrigió la prueba, no el código.
+
+### U3.1 — `UserRepository`: datos y dos índices como una sola colección
+
+**Qué hace.** Es la única clase que conoce los tres archivos: `users.dat`, `users_by_id.idx` y `users_by_username.idx`. Ofrece `Create`, `FindById`, `FindByUsername`, `Update` y `Remove`, y las capas superiores no saben que existen árboles ni registros. Cada búsqueda baja por un árbol B (O(log n)) para obtener el índice del registro, y con ese índice lee `users.dat` en una sola operación.
+
+**Cómo se generan los ids.** `id = RecordCount() + 1`. Como el borrado es lógico, `users.dat` nunca pierde registros y el total solo crece: funciona como contador persistente sin agregar campos al archivo, y un id eliminado no se reutiliza. Esto importa porque metadata guarda el id del dueño de cada video: si se reutilizara, un usuario nuevo heredaría los videos de otro.
+
+**Pregunta probable en la defensa: si `id = índice + 1`, ¿para qué el árbol por id?** Hoy esa relación se cumple, pero es un detalle de cómo se genera el id, no una regla del formato. El árbol además sabe qué usuarios están activos: al eliminar uno, su clave sale del árbol. Y es lo que pide el enunciado: las búsquedas se hacen con el árbol B.
+
+**El problema de los tres archivos.** Una operación escribe en varios archivos y el proceso puede caerse entre dos escrituras. No hay registro de transacciones (WAL), así que la defensa es el **orden** de las escrituras. La regla es que `users.dat` manda y que una caída nunca debe permitir dos usuarios con el mismo username:
+
+| Operación | Orden | Si se cae a la mitad |
+|---|---|---|
+| `Create` | datos → username → id | Tras los datos: registro huérfano que nadie encuentra. Tras el username: el nombre queda reservado y el usuario solo se encuentra por username |
+| `Update` con cambio de nombre | reservar nombre nuevo → datos → quitar nombre viejo | Los dos nombres llevan al mismo registro, pero nadie más puede tomar el nuevo |
+| `Remove` | marcar borrado → username → id | El usuario ya no aparece en las consultas; su nombre sigue reservado |
+
+Reservar un nombre de más es un defecto menor. Duplicarlo sería grave, porque el login podría entrar a la cuenta equivocada. Estos estados no se reparan solos al arrancar; es la limitación ya conocida de no tener WAL.
+
+**Bug encontrado durante el desarrollo.** La primera versión escribía el índice por id antes que el de username. Si fallaba entre ambos, el usuario existía por id pero su nombre aparecía libre, y otro podía registrarlo. Todas las pruebas pasaban, y el error se encontró al repasar el orden caso por caso. La primera prueba que se escribió tampoco lo detectaba, porque simulaba el estado que deja el orden *nuevo*. La definitiva (`FailedCreateKeepsTheUsernameReserved`) interrumpe `Create` de verdad: siembra el id 1 en el índice para que el `Insert` por id falle. Se comprobó que fallaba con el orden viejo y que pasa con el nuevo.
+
+**Validar antes de escribir.** `Create` construye la clave antes de escribir y `Append` serializa antes de tocar el disco. `Update` llama a `Serialize` al principio solo para validar: si el email fuera inválido y eso se descubriera en `WriteAt`, el nombre nuevo ya estaría reservado sin que nadie lo use.
+
+**`Update` no puede eliminar.** Si recibe `deleted = true`, lanza una excepción: marcar el registro sin limpiar los índices dejaría claves apuntando a un usuario eliminado. La única forma de eliminar es `Remove`.
+
+**`UpdateResult` en vez de excepciones.** "No existe" y "username ocupado" son resultados normales que se traducirán a 404 y 409. Las excepciones quedan para errores de programación (`invalid_argument`) y fallos de disco (`StorageError`, que será un 500).
+
+**Concurrencia.** La clase no es segura entre hilos, y lo dice su comentario. Se protegerá con un mutex en U4.5.
+
+**Pruebas:** 23 casos con `t = 2` para forzar divisiones y fusiones:
+- **Operaciones:** ids consecutivos, búsqueda por ambas claves, renombrado, conflicto de nombre, usuario inexistente y persistencia tras reabrir.
+- **Datos inválidos:** comprueban que no quede nada escrito.
+- **Caídas:** registro huérfano, `Remove` interrumpido y `Create` interrumpido.
+- **Carga:** 300 usuarios creados y la mitad eliminados, verificando después las invariantes de los dos árboles.
