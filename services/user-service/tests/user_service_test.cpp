@@ -2,12 +2,14 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 
 #include "tecflix/users/domain/user_error.hpp"
+#include "tecflix/users/domain/user_validator.hpp"
 #include "temp_directory.hpp"
 
 namespace tecflix::users {
@@ -19,6 +21,12 @@ constexpr std::int64_t kNow = 1'700'000'000;
 constexpr std::uint64_t kMissingId = 999;
 constexpr std::uint64_t kUsedBytes = 500;
 const std::string kPassword = "secreta-123";
+const std::string kWrongPassword = "otra-clave";
+// Suficientes para que el hash domine el tiempo medido, sin alargar la prueba.
+constexpr std::uint32_t kTimingIterations = 50'000;
+// Sin el hash de relleno la proporción medida es menor que 0,001; con él, ronda
+// 1. Un umbral tan lejos de ambos evita fallos por carga de la máquina.
+constexpr double kMinTimingRatio = 0.25;
 
 Registration Ana() { return {"Ana", "ana@tecflix.cr", kPassword}; }
 Registration Beto() { return {"beto", "beto@tecflix.cr", kPassword}; }
@@ -30,6 +38,12 @@ std::optional<UserErrorCode> ErrorOf(const std::function<void()>& action) {
     return error.Code();
   }
   return std::nullopt;
+}
+
+std::chrono::duration<double> TimeOf(const std::function<void()>& action) {
+  const auto start = std::chrono::steady_clock::now();
+  action();
+  return std::chrono::steady_clock::now() - start;
 }
 
 class UserServiceTest : public ::testing::Test {
@@ -215,6 +229,103 @@ TEST_F(UserServiceTest, DeleteRemovesTheUserAndFreesItsValues) {
 TEST_F(UserServiceTest, DeleteReportsUnknownUser) {
   EXPECT_EQ(ErrorOf([&] { service_.Delete(kMissingId); }),
             UserErrorCode::kUserNotFound);
+}
+
+TEST_F(UserServiceTest, AuthenticateReturnsTheProfile) {
+  const UserProfile created = service_.Register(Ana());
+
+  const UserProfile profile = service_.Authenticate("Ana", kPassword);
+
+  EXPECT_EQ(profile.id, created.id);
+  EXPECT_EQ(profile.username, "Ana");
+  EXPECT_EQ(profile.quota_bytes, UserService::kQuotaBytes);
+}
+
+TEST_F(UserServiceTest, AuthenticateIgnoresUsernameCase) {
+  const UserProfile created = service_.Register(Ana());
+
+  EXPECT_EQ(service_.Authenticate("ANA", kPassword).id, created.id);
+}
+
+TEST_F(UserServiceTest, AuthenticateRejectsWrongPassword) {
+  service_.Register(Ana());
+
+  EXPECT_EQ(ErrorOf([&] { service_.Authenticate("Ana", kWrongPassword); }),
+            UserErrorCode::kInvalidCredentials);
+}
+
+TEST_F(UserServiceTest, AuthenticateGivesTheSameErrorForAnUnknownUser) {
+  std::string wrong_password_message;
+  std::string unknown_user_message;
+  service_.Register(Ana());
+
+  try {
+    service_.Authenticate("Ana", kWrongPassword);
+  } catch (const UserError& error) {
+    wrong_password_message = error.what();
+  }
+  try {
+    service_.Authenticate("nadie", kPassword);
+  } catch (const UserError& error) {
+    EXPECT_EQ(error.Code(), UserErrorCode::kInvalidCredentials);
+    unknown_user_message = error.what();
+  }
+
+  EXPECT_FALSE(unknown_user_message.empty());
+  EXPECT_EQ(unknown_user_message, wrong_password_message);
+}
+
+TEST_F(UserServiceTest, AuthenticateTreatsMalformedInputAsInvalidCredentials) {
+  service_.Register(Ana());
+  const std::string too_long_username(UserValidator::kMaxUsernameSize + 1, 'a');
+  const std::string too_long_password(UserValidator::kMaxPasswordSize + 1, 'a');
+
+  for (const std::string& username :
+       {std::string(), std::string("a b"), too_long_username}) {
+    EXPECT_EQ(ErrorOf([&] { service_.Authenticate(username, kPassword); }),
+              UserErrorCode::kInvalidCredentials);
+  }
+  for (const std::string& password : {std::string(), too_long_password}) {
+    EXPECT_EQ(ErrorOf([&] { service_.Authenticate("Ana", password); }),
+              UserErrorCode::kInvalidCredentials);
+  }
+}
+
+TEST_F(UserServiceTest, AuthenticateRejectsADeletedUser) {
+  const UserProfile created = service_.Register(Ana());
+  service_.Delete(created.id);
+
+  EXPECT_EQ(ErrorOf([&] { service_.Authenticate("Ana", kPassword); }),
+            UserErrorCode::kInvalidCredentials);
+}
+
+TEST_F(UserServiceTest, AuthenticateFollowsPasswordAndUsernameChanges) {
+  const UserProfile created = service_.Register(Ana());
+  ProfileChanges changes;
+  changes.username = "Anita";
+  changes.password = kWrongPassword;
+  service_.Update(created.id, changes);
+
+  EXPECT_EQ(service_.Authenticate("Anita", kWrongPassword).id, created.id);
+  EXPECT_EQ(ErrorOf([&] { service_.Authenticate("Anita", kPassword); }),
+            UserErrorCode::kInvalidCredentials);
+  EXPECT_EQ(ErrorOf([&] { service_.Authenticate("Ana", kWrongPassword); }),
+            UserErrorCode::kInvalidCredentials);
+}
+
+TEST_F(UserServiceTest, AuthenticateTakesAsLongForAnUnknownUser) {
+  UserService slow_service{repository_, PasswordHasher{kTimingIterations},
+                           [] { return kNow; }};
+  slow_service.Register(Ana());
+
+  const auto wrong_password = TimeOf([&] {
+    ErrorOf([&] { slow_service.Authenticate("Ana", kWrongPassword); });
+  });
+  const auto unknown_user = TimeOf([&] {
+    ErrorOf([&] { slow_service.Authenticate("nadie", kWrongPassword); });
+  });
+
+  EXPECT_GT(unknown_user / wrong_password, kMinTimingRatio);
 }
 
 TEST(UserServiceClockTest, SystemClockReturnsACurrentTimestamp) {

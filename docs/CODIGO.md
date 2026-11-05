@@ -419,3 +419,22 @@ Se valida en el servidor aunque la web también lo haga, porque cualquiera puede
 - `Update` lee y luego escribe: dos peticiones simultáneas podrían pisarse. Se resolverá en U4.5, junto con la regla de calcular el hash fuera del mutex.
 
 **Pruebas:** 7 de `UserValidator` (límites exactos y caracteres prohibidos) y 17 de `UserService`: registro, datos inválidos sin guardar nada, duplicados sin distinguir mayúsculas, actualización parcial, cambio de contraseña con salt nuevo, y eliminación. Se suman 8 del repositorio, entre ellas emails largos con el mismo inicio y soltar el username reservado cuando el email resulta ocupado.
+
+### U3.4 — Login: `UserService::Authenticate`
+
+**Qué hace.** Recibe username y contraseña, busca el registro con el árbol B por username (O(log n)), verifica la contraseña con `PasswordHasher` y devuelve el `UserProfile`. Si algo falla, lanza `UserError` con `kInvalidCredentials`. No emite el token: eso es de `AuthService` (U3.5), que recibirá este perfil. Así `UserService` no sabe nada de JWT y cada clase tiene una sola responsabilidad.
+
+**Un solo error para todo.** "Usuario inexistente" y "contraseña incorrecta" producen el mismo código y el mismo mensaje. Si fueran distintos, cualquiera podría probar nombres y descubrir qué cuentas existen (enumeración de usuarios), y después atacar solo esas. Por eso no se reutiliza `kUserNotFound`.
+
+**Mismo tiempo de respuesta.** Igualar el mensaje no basta. Verificar una contraseña tarda casi un segundo por las 600 000 iteraciones, y no encontrar al usuario tarda microsegundos: quien mida el tiempo sabría la respuesta igual que si se la dijéramos. Cuando el usuario no existe se ejecuta `Verify` contra un hash y un salt en cero y se descarta el resultado. Solo importa pagar el mismo costo; no hace falta preparar un hash falso real, porque `Verify` tarda lo mismo con cualquier valor.
+
+**Entrada malformada.** Un username con formato inválido o una contraseña fuera de 8–128 bytes se rechazan antes de buscar y sin calcular el hash. Esto no abre la misma fuga de tiempo, porque `Register` y `Update` aplican esas reglas: ninguna cuenta puede tener esos valores, y la respuesta rápida solo revela algo que ya es público. Además hace falta para otra cosa: `FindByUsername` lanza `std::invalid_argument` si el texto no sirve como clave, lo que terminaría en un error 500.
+
+**Se inicia sesión con username, no con email.** Así se decidió al diseñar los índices, y sin distinguir mayúsculas: `ANA` entra a la cuenta `Ana`, porque el índice guarda las claves en minúsculas.
+
+**Limitaciones conocidas.**
+- El login no limita los intentos. PBKDF2 encarece cada intento, pero también convierte el login en una forma barata de ocupar la CPU del servidor. Pesa en el load-test de V2.0.
+- Cuando el login es correcto o la contraseña es incorrecta el tiempo es el mismo, pero la igualdad con un usuario inexistente es aproximada: leer el registro agrega microsegundos frente a casi un segundo de hash, una diferencia que el ruido de red tapa.
+
+**Pruebas:** 8 casos. Devuelve el perfil, ignora mayúsculas, rechaza contraseña incorrecta, mismo código y mensaje con usuario inexistente, entrada malformada sin `std::invalid_argument`, usuario eliminado, y que el login siga los cambios de username y contraseña.
+- **Prueba de tiempo:** compara una contraseña incorrecta con un usuario inexistente usando 50 000 iteraciones. Exige una proporción mayor que 0,25: con el relleno ronda 1, y sin él se midió 0,0004 quitando la línea a propósito. El umbral queda lejos de ambos para que la carga de la máquina no la haga fallar.

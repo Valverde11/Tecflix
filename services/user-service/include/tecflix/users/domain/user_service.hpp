@@ -54,6 +54,11 @@ class UserService {
               Clock clock = SystemClock);
 
   UserProfile Register(const Registration& registration);
+  // Verifica las credenciales y devuelve el usuario. Todo fallo lanza el mismo
+  // kInvalidCredentials y un username inexistente tarda lo mismo que una
+  // contraseña incorrecta: el login no debe revelar qué usuarios existen.
+  UserProfile Authenticate(const std::string& username,
+                           const std::string& password);
   UserProfile Get(std::uint64_t id);
   UserProfile Update(std::uint64_t id, const ProfileChanges& changes);
   void Delete(std::uint64_t id);

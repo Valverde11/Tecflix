@@ -12,6 +12,7 @@ enum class UserErrorCode {
   kUsernameTaken,
   kEmailTaken,
   kUserNotFound,
+  kInvalidCredentials,
 };
 
 // Error causado por la petición, no por el servidor. Lleva un código estable
