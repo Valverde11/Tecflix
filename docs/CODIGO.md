@@ -550,3 +550,27 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 **Pruebas de verdad por HTTP.** `HttpTestServer` levanta el servidor completo en un puerto libre con archivos reales en carpeta temporal, y el cliente llama por socket. Comprueban también que ninguna respuesta contenga contraseña ni salt, y que un login fallido sea idéntico byte a byte con usuario inexistente o con contraseña incorrecta.
 
 **Pruebas:** 11 nuevas.
+
+### U4.3 — Rutas protegidas: token y dueño
+
+**Qué hace.** Agrega `GET /api/users/me`, `GET`, `PUT` y `DELETE /api/users/{id}`, y `GET /api/users/{id}/quota`. Dos métodos concentran la seguridad:
+- `RequireToken` lee `Authorization: Bearer <token>`, lo valida con `AuthService` y responde 401 si algo falla. La causa no se revela: da igual si falta, venció o la firma es falsa.
+- `RequireOwner` hace lo anterior y además compara el id de la ruta con el del token; si no coinciden, responde 403.
+
+**401 frente a 403.** 401 significa "no sé quién eres" y 403 "sé quién eres, pero esto no es tuyo". Por eso el token se revisa primero, y antes de leer el cuerpo: un anónimo no recibe ni siquiera errores de validación.
+
+**El id del usuario sale de la firma.** `claims.user_id` proviene del token firmado, no de algo que el cliente pueda cambiar. Por eso `/users/me` no necesita más comprobaciones.
+
+**Perfil público.** `SPEC.md` permite que cualquier usuario autenticado consulte `GET /users/{id}`, pero no dice qué campos. Solo el dueño recibe email y consumo; los demás reciben `{id, username}`. Sin esto, cualquier cuenta podría recorrer los ids (1, 2, 3...) y juntar todos los correos.
+
+**`/users/me` va antes de `/users/:id`.** httplib usa la primera ruta que coincide y `me` también encaja en `:id`. Sin ese orden, `/users/me` respondería 400 `invalid_user_id`.
+
+**`std::from_chars` para el id.** Rechaza signos, letras y números que no caben en 64 bits, sin excepciones. Se exige además que consuma todo el texto: si no, `1abc` se leería como `1`.
+
+**Campos de cuota en el `PUT`.** Se ignoran: el controlador solo lee `username`, `email` y `password`. Una prueba envía `quotaBytes` y comprueba que no cambia.
+
+**`Handle`.** Las rutas se registran con un puntero a método (`&UserController::GetMe`), lo que evita repetir la misma lambda en cada ruta.
+
+**Token de un usuario eliminado.** Sigue siendo válido hasta `exp` (limitación de U3.5), pero responde 404 porque el usuario no existe. Como los ids no se reutilizan, ese token nunca puede actuar sobre una cuenta nueva.
+
+**Pruebas:** 19 nuevas: rutas sin token, cabeceras mal formadas, firma de otro secreto, token vencido, ids inválidos, perfil público, actualización parcial, cambio de contraseña, conflictos, permisos de dueño, borrado y cuota.

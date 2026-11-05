@@ -59,6 +59,25 @@ class HttpTestServer : public ::testing::Test {
             {"password", "secreta-123"}};
   }
 
+  struct Session {
+    std::uint64_t id = 0;
+    std::string token;
+  };
+
+  // Registra un usuario e inicia sesión por HTTP.
+  Session SignUp(const std::string& username) {
+    const nlohmann::json credentials = Credentials(username);
+    PostJson(UserController::kUsersRoute, credentials);
+    const auto response = PostJson(UserController::kLoginRoute, credentials);
+    const auto body = nlohmann::json::parse(response->body);
+    return {body["user"]["id"].get<std::uint64_t>(),
+            body["token"].get<std::string>()};
+  }
+
+  static httplib::Headers Bearer(const std::string& token) {
+    return {{"Authorization", "Bearer " + token}};
+  }
+
   TempDirectory temp_;
   UserRepository repository_{temp_.Path(), kSmallDegree};
   UserService users_{repository_, PasswordHasher{kFastIterations},
