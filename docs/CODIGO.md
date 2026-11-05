@@ -502,3 +502,13 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 - Si un servicio reintenta una reserva tras un error de red, los bytes se cuentan dos veces: la operación no es idempotente. Evitarlo exigiría guardar qué videos se contaron, y eso no cabe en el registro actual.
 
 **Pruebas:** 12 de `UserService`: cuota inicial, acumulación persistida, llenado exacto, un byte de más, cuota llena, desbordamiento de enteros, liberación parcial y total, liberar de más sin cambiar nada, independencia entre usuarios, login después de reservar y usuario inexistente.
+
+### U3.7 — Pruebas del servicio con reinicio
+
+**Qué hace.** Las pruebas de `UserService` ya usaban archivos reales en una carpeta temporal, con `TempDirectory`, sin simular el disco. Faltaba lo que distingue a un sistema persistente: que todo siga igual cuando el proceso se reinicia. `EverythingSurvivesARestart` registra dos usuarios, reserva espacio y elimina uno; luego cierra los archivos y los abre de nuevo.
+
+**Qué comprueba después de reabrir.** Que el login funciona (el username, el hash y el salt se guardaron), que la cuota usada sigue igual, que el username sigue ocupado, que el usuario eliminado sigue sin existir y que su id no se reutiliza al registrar otra vez su mismo nombre.
+
+**Por qué bloques con llaves.** El primer bloque crea el repositorio y al salir lo destruye, lo que cierra los cuatro archivos. Es lo mismo que hace un proceso que termina: sin un objeto vivo, los datos solo pueden venir del disco.
+
+**Pruebas:** 1 nueva; `ctest` queda en 192.

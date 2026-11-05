@@ -441,6 +441,36 @@ TEST_F(UserServiceTest, QuotaOperationsReportUnknownUser) {
             UserErrorCode::kUserNotFound);
 }
 
+// Cada bloque abre sus propios archivos y los cierra al terminar, como lo haría
+// un proceso nuevo: nada puede sobrevivir en memoria entre un bloque y otro.
+TEST(UserServiceRestartTest, EverythingSurvivesARestart) {
+  const TempDirectory temp;
+  const PasswordHasher hasher{kFastIterations};
+  const auto clock = [] { return kNow; };
+  std::uint64_t ana_id = 0;
+  std::uint64_t beto_id = 0;
+
+  {
+    UserRepository repository{temp.Path(), kSmallDegree};
+    UserService service{repository, hasher, clock};
+    ana_id = service.Register(Ana()).id;
+    beto_id = service.Register(Beto()).id;
+    service.ReserveSpace(ana_id, kUsedBytes);
+    service.Delete(beto_id);
+  }
+
+  UserRepository repository{temp.Path(), kSmallDegree};
+  UserService service{repository, hasher, clock};
+
+  EXPECT_EQ(service.Authenticate("Ana", kPassword).id, ana_id);
+  EXPECT_EQ(service.GetQuota(ana_id).used_bytes, kUsedBytes);
+  EXPECT_EQ(ErrorOf([&] { service.Register(Ana()); }),
+            UserErrorCode::kUsernameTaken);
+  EXPECT_EQ(ErrorOf([&] { service.Get(beto_id); }),
+            UserErrorCode::kUserNotFound);
+  EXPECT_GT(service.Register(Beto()).id, beto_id);
+}
+
 TEST(UserServiceClockTest, SystemClockReturnsACurrentTimestamp) {
   EXPECT_GT(UserService::SystemClock(), kNow);
 }
