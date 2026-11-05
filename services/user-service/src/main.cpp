@@ -6,6 +6,7 @@
 #include "tecflix/users/domain/auth_service.hpp"
 #include "tecflix/users/domain/user_service.hpp"
 #include "tecflix/users/security/password_hasher.hpp"
+#include "tecflix/users/security/service_token_verifier.hpp"
 #include "tecflix/users/storage/user_repository.hpp"
 #include "tecflix/users/user_controller.hpp"
 
@@ -23,7 +24,8 @@ int main() {
     UserRepository repository(config.DataDirectory());
     UserService users(repository, PasswordHasher{});
     const AuthService auth(config.AuthSecret());
-    UserController controller(users, auth);
+    const ServiceTokenVerifier service_tokens(config.ServiceSecret());
+    UserController controller(users, auth, service_tokens);
     ApiServer server(controller);
 
     if (!server.Bind(kListenHost, config.Port())) {

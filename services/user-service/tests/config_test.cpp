@@ -11,6 +11,7 @@ namespace tecflix::users {
 namespace {
 
 const std::string kSecret = "secreto-de-prueba";
+const std::string kServiceSecret = "secreto-de-servicio";
 
 // Simula el entorno del proceso con un mapa fijo.
 Config::EnvironmentReader FakeEnvironment(
@@ -30,6 +31,7 @@ Config::EnvironmentReader FakeEnvironment(
 Config::EnvironmentReader EnvironmentWithSecret(
     std::map<std::string, std::string> variables) {
   variables.emplace("AUTH_SECRET", kSecret);
+  variables.emplace("SERVICE_SECRET", kServiceSecret);
   return FakeEnvironment(std::move(variables));
 }
 
@@ -52,6 +54,15 @@ TEST(ConfigTest, ReadsAllVariables) {
   EXPECT_EQ(config.DataDirectory().generic_string(), "/tmp/users");
   EXPECT_EQ(config.CorsOrigin(), "http://web.local");
   EXPECT_EQ(config.AuthSecret(), kSecret);
+  EXPECT_EQ(config.ServiceSecret(), kServiceSecret);
+}
+
+TEST(ConfigTest, RejectsMissingOrEmptyServiceSecret) {
+  EXPECT_THROW(Config::FromEnvironment(FakeEnvironment({{"AUTH_SECRET", kSecret}})),
+               std::invalid_argument);
+  EXPECT_THROW(Config::FromEnvironment(FakeEnvironment(
+                   {{"AUTH_SECRET", kSecret}, {"SERVICE_SECRET", ""}})),
+               std::invalid_argument);
 }
 
 TEST(ConfigTest, RejectsMissingAuthSecret) {

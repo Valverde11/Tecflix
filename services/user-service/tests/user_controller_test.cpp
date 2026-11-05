@@ -386,5 +386,122 @@ TEST_F(ProtectedRoutesTest, OtherUsersCannotReadTheQuota) {
   EXPECT_EQ(response->status, 403);
 }
 
+class QuotaUsageTest : public ProtectedRoutesTest {
+ protected:
+  std::string UsagePath() const { return UserPath(ana_.id) + "/quota/usage"; }
+
+  static httplib::Headers ServiceHeaders(const std::string& token) {
+    return {{UserController::kServiceTokenHeader, token}};
+  }
+
+  httplib::Result PostDelta(const std::string& raw_body) {
+    return Client().Post(UsagePath(), ServiceHeaders(kServiceSecret), raw_body,
+                         kJson);
+  }
+
+  httplib::Result PostDelta(std::int64_t delta) {
+    return PostDelta(json({{"deltaBytes", delta}}).dump());
+  }
+};
+
+TEST_F(QuotaUsageTest, ServiceCanReadTheQuotaOfAnyUser) {
+  const auto response = Client().Get(UserPath(ana_.id) + "/quota",
+                                     ServiceHeaders(kServiceSecret));
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 200);
+}
+
+TEST_F(QuotaUsageTest, PositiveDeltaReservesSpace) {
+  const auto response = PostDelta(static_cast<std::int64_t>(kSomeBytes));
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(json::parse(response->body),
+            json({{"quotaBytes", UserService::kQuotaBytes},
+                  {"usedBytes", kSomeBytes}}));
+}
+
+TEST_F(QuotaUsageTest, NegativeDeltaReleasesSpace) {
+  users_.ReserveSpace(ana_.id, kSomeBytes);
+
+  const auto response = PostDelta(-static_cast<std::int64_t>(kSomeBytes));
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 200);
+  EXPECT_EQ(users_.GetQuota(ana_.id).used_bytes, 0u);
+}
+
+TEST_F(QuotaUsageTest, ReportsQuotaExceeded) {
+  const auto response =
+      PostDelta(static_cast<std::int64_t>(UserService::kQuotaBytes) + 1);
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 413);
+  EXPECT_EQ(ErrorCodeOf(response), "quota_exceeded");
+}
+
+TEST_F(QuotaUsageTest, ReportsReleasingMoreThanWhatIsUsed) {
+  const auto response = PostDelta(-1);
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 409);
+  EXPECT_EQ(ErrorCodeOf(response), "release_exceeds_usage");
+}
+
+TEST_F(QuotaUsageTest, HandlesTheExtremesOfTheNumberRange) {
+  const auto largest = PostDelta("{\"deltaBytes\":18446744073709551615}");
+  const auto smallest = PostDelta("{\"deltaBytes\":-9223372036854775808}");
+
+  ASSERT_TRUE(largest);
+  ASSERT_TRUE(smallest);
+  EXPECT_EQ(largest->status, 413);
+  EXPECT_EQ(smallest->status, 409);
+  EXPECT_EQ(users_.GetQuota(ana_.id).used_bytes, 0u);
+}
+
+TEST_F(QuotaUsageTest, RejectsDeltasThatAreNotIntegers) {
+  const auto missing = PostDelta("{}");
+  const auto text = PostDelta("{\"deltaBytes\":\"5\"}");
+  const auto fraction = PostDelta("{\"deltaBytes\":1.5}");
+  const auto too_large = PostDelta("{\"deltaBytes\":99999999999999999999999}");
+
+  for (const auto* response : {&missing, &text, &fraction, &too_large}) {
+    ASSERT_TRUE(*response);
+    EXPECT_EQ((*response)->status, 400);
+    EXPECT_EQ(ErrorCodeOf(*response), "invalid_request");
+  }
+}
+
+TEST_F(QuotaUsageTest, UserTokensCannotChangeTheQuota) {
+  users_.ReserveSpace(ana_.id, kSomeBytes);
+  const std::string body =
+      json({{"deltaBytes", -static_cast<std::int64_t>(kSomeBytes)}}).dump();
+
+  const auto response =
+      Client().Post(UsagePath(), Bearer(ana_.token), body, kJson);
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 401);
+  EXPECT_EQ(users_.GetQuota(ana_.id).used_bytes, kSomeBytes);
+}
+
+TEST_F(QuotaUsageTest, RejectsAWrongServiceToken) {
+  const auto response = Client().Post(
+      UsagePath(), ServiceHeaders("no-es-el-secreto"), "{\"deltaBytes\":1}", kJson);
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 401);
+}
+
+TEST_F(QuotaUsageTest, ReportsUnknownUser) {
+  const auto response =
+      Client().Post(UserPath(kMissingId) + "/quota/usage",
+                    ServiceHeaders(kServiceSecret), "{\"deltaBytes\":1}", kJson);
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(response->status, 404);
+}
+
 }  // namespace
 }  // namespace tecflix::users

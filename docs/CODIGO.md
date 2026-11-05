@@ -574,3 +574,19 @@ El contenido **no está cifrado**: cualquiera puede leerlo. La firma solo garant
 **Token de un usuario eliminado.** Sigue siendo válido hasta `exp` (limitación de U3.5), pero responde 404 porque el usuario no existe. Como los ids no se reutilizan, ese token nunca puede actuar sobre una cuenta nueva.
 
 **Pruebas:** 19 nuevas: rutas sin token, cabeceras mal formadas, firma de otro secreto, token vencido, ids inválidos, perfil público, actualización parcial, cambio de contraseña, conflictos, permisos de dueño, borrado y cuota.
+
+### U4.1 (cierre) — Cuota entre servicios con `X-Service-Token`
+
+**Qué hace.** `POST /api/users/{id}/quota/usage` recibe `{"deltaBytes": n}`: si `n` es positivo reserva, si es negativo libera. Solo la pueden usar otros servicios, que se identifican con el header `X-Service-Token`, cuyo valor es la variable `SERVICE_SECRET`. También pueden leer con `GET /quota` la cuota de cualquier usuario, porque streaming la consulta antes de aceptar una subida.
+
+**Por qué no basta el JWT del usuario.** El usuario es dueño de su token. Si esta ruta lo aceptara, cualquiera podría enviar un delta negativo y borrar su propio consumo, saltándose la cuota. Por eso esta ruta ignora el JWT: una prueba comprueba que el token de Ana recibe 401 y que su consumo no cambia.
+
+**Por qué un secreto aparte y no `AUTH_SECRET`.** Con `AUTH_SECRET` se firman tokens de usuario, y separar los secretos limita el daño: la web nunca ve `SERVICE_SECRET`, y un servicio que solo valide tokens no necesita tener acceso a la cuota. Además, un secreto directo en un header es fácil de explicar. Su debilidad es que viaja tal cual por la red, algo aceptable porque el tráfico entre servicios es interno; en un despliegue público debería ir por HTTPS.
+
+**Comparación en tiempo constante.** `ServiceTokenVerifier` usa `ConstantTimeEquals`, igual que el hash y la firma del JWT. Primero compara los tamaños: eso revela la longitud del secreto, pero no su contenido. También exige 32 bytes al arrancar, igual que `AUTH_SECRET`.
+
+**Leer el delta sin desbordar.** nlohmann guarda los enteros no negativos como `unsigned` y los negativos como `signed`, lo que permite usar todo el rango:
+- Un número que no cabe en 64 bits llega como decimal, y `is_number_integer` lo rechaza junto con `1.5`.
+- Calcular `-delta` con el mínimo de `int64` es comportamiento indefinido, porque su positivo no existe en `int64`. `Magnitude` hace la resta en `uint64`, donde dar la vuelta está definido y el resultado es correcto.
+
+**Pruebas:** 15 nuevas. 10 de la ruta (reservar, liberar, 413, 409, extremos del rango, deltas inválidos, token de usuario, token incorrecto, usuario inexistente, lectura por servicio), 4 de `ServiceTokenVerifier` y 1 de `Config`.
