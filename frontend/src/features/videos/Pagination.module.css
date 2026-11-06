@@ -1,0 +1,14 @@
+.pagination {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  margin-top: var(--space-4);
+}
+
+.pagination a {
+  color: var(--color-action);
+}
+
+.current {
+  color: var(--color-muted);
+}
