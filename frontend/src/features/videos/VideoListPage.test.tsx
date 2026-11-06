@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { TEST_API_CONFIG, testSession, testVideo } from '../../test/fixtures';
 import { renderApp } from '../../test/renderApp';
@@ -46,6 +46,104 @@ describe('VideoListPage', () => {
     const titles = await shownTitles();
 
     expect(titles).toEqual(['Zeta', 'Alfa', 'Medio']);
+  });
+
+  describe('estados', () => {
+    const emptyPage = { items: [], page: 1, pageSize: 10, total: 0 };
+
+    it('avisa mientras carga', async () => {
+      server.use(
+        http.get(LIST_URL, async () => {
+          await delay('infinite');
+          return HttpResponse.json(emptyPage);
+        }),
+      );
+      renderApp('/videos', testSession);
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Cargando videos…');
+    });
+
+    it('invita a subir el primer video si no hay ninguno', async () => {
+      server.use(http.get(LIST_URL, () => HttpResponse.json(emptyPage)));
+      renderApp('/videos', testSession);
+
+      expect(await screen.findByText('Todavía no hay videos.')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Subir el primero' })).toHaveAttribute(
+        'href',
+        '/upload',
+      );
+    });
+
+    it('distingue una página fuera de rango y lleva a la primera con el mismo orden', async () => {
+      server.use(
+        http.get(LIST_URL, ({ request }) => {
+          const page = Number(new URL(request.url).searchParams.get('page'));
+          const items = page === 1 ? [testVideo] : [];
+          return HttpResponse.json({ items, page, pageSize: 10, total: 1 });
+        }),
+      );
+      renderApp('/videos?page=9&sort=title-asc', testSession);
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Ir a la primera página' }));
+
+      expect(await shownTitles()).toEqual([testVideo.title]);
+      expect(screen.getByLabelText('Ordenar por')).toHaveValue('title-asc');
+    });
+
+    it('explica el error y permite reintentar', async () => {
+      let attempts = 0;
+      server.use(
+        http.get(LIST_URL, () => {
+          attempts += 1;
+          return attempts === 1
+            ? HttpResponse.json({ error: 'internal', message: 'Falló Mongo' }, { status: 503 })
+            : HttpResponse.json({ items: [testVideo], page: 1, pageSize: 10, total: 1 });
+        }),
+      );
+      renderApp('/videos', testSession);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Falló Mongo');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Intentar de nuevo' }));
+
+      expect(await shownTitles()).toEqual([testVideo.title]);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('señala una respuesta que no cumple el contrato', async () => {
+      server.use(http.get(LIST_URL, () => HttpResponse.json({ videos: [] })));
+      renderApp('/videos', testSession);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('"items"');
+    });
+
+    it('vuelve al login si metadata rechaza el token', async () => {
+      server.use(
+        http.get(LIST_URL, () => HttpResponse.json({ error: 'unauthorized' }, { status: 401 })),
+      );
+      const services = renderApp('/videos', testSession);
+
+      expect(await screen.findByRole('heading', { name: 'Iniciar sesión' })).toBeInTheDocument();
+      expect(services.sessionStore.getSession()).toBeNull();
+    });
+
+    it('mantiene visible la página anterior mientras llega la siguiente', async () => {
+      server.use(
+        http.get(LIST_URL, async ({ request }) => {
+          const page = Number(new URL(request.url).searchParams.get('page'));
+          if (page === 2) {
+            await delay('infinite');
+          }
+          return HttpResponse.json({ items: [testVideo], page, pageSize: 10, total: 11 });
+        }),
+      );
+      renderApp('/videos', testSession);
+
+      await userEvent.click(await screen.findByRole('link', { name: 'Siguiente' }));
+
+      const list = await screen.findByRole('list', { name: 'Lista de videos', busy: true });
+      expect(within(list).getByRole('heading', { name: testVideo.title })).toBeInTheDocument();
+    });
   });
 
   describe('orden y paginación', () => {

@@ -1,14 +1,9 @@
-import { useAuth } from '../auth/useAuth';
-import { Pagination } from './Pagination';
-import { useVideoList } from './useVideoList';
 import { SORT_OPTIONS, useVideoListParams } from './useVideoListParams';
-import { VideoCard } from './VideoCard';
+import { VideoListBody } from './VideoListBody';
 import styles from './VideoListPage.module.css';
 
 export function VideoListPage() {
-  const { user } = useAuth();
   const { query, sortId, changeSort, searchForPage } = useVideoListParams();
-  const { data } = useVideoList(query);
 
   return (
     <>
@@ -30,20 +25,7 @@ export function VideoListPage() {
           </select>
         </label>
       </div>
-      <ul className={styles.list} aria-label="Lista de videos">
-        {data?.items.map((video) => (
-          <li key={video.videoId}>
-            <VideoCard video={video} isOwn={video.ownerId === user?.id} />
-          </li>
-        ))}
-      </ul>
-      {data !== undefined && (
-        <Pagination
-          page={query.page}
-          totalPages={Math.ceil(data.total / data.pageSize)}
-          searchForPage={searchForPage}
-        />
-      )}
+      <VideoListBody query={query} searchForPage={searchForPage} />
     </>
   );
 }

@@ -177,3 +177,16 @@ El contrato no incluye miniaturas, así que una cuadrícula de tarjetas tendría
 - **Los valores de la URL se validan**: cualquiera puede escribir `?page=abc`. Lo inválido vuelve al valor por defecto y no llega a la API.
 - **Cambiar el orden vuelve a la página 1**: con otro orden, la página actual muestra otros videos y quedarse ahí no tiene sentido.
 - **`totalPages` se calcula con lo que informa la API** (`total` y `pageSize`). Esa cuenta decide qué enlaces mostrar; no pagina datos.
+
+### W3.3 · Estados de carga, vacío y error
+
+`VideoListBody` decide qué mostrar a partir de lo que entrega `useQuery`. Se separó de `VideoListPage` para que el encabezado y el selector de orden sigan visibles en todos los casos.
+
+- **Cargando**: solo la primera vez, cuando no hay datos. Lleva `role="status"` para que un lector de pantalla lo anuncie.
+- **Error con reintento**: lleva `role="alert"`, explica el motivo y ofrece reintentar con `refetch`. Si un refresco falla pero ya hay datos, se conservan: es mejor una lista algo vieja que una pantalla de error.
+- **Sin videos**: invita a subir el primero.
+- **Página sin videos**: `total` mayor que 0 con `items` vacío significa que hay videos, pero no en esa página, algo que pasa al borrar videos o al editar la URL. Se ofrece volver a la primera página conservando el orden.
+- **Cambio de página**: la lista anterior queda atenuada y con `aria-busy` hasta que llega la nueva, sin parpadeo.
+- **Sesión vencida**: un 401 de metadata limpia la sesión en `HttpClient` y `RequireAuth` redirige. La página no necesita código para este caso; una prueba lo confirma.
+
+También se agregó al encabezado el enlace "Subir video", para llegar a esa pantalla desde cualquier lugar.

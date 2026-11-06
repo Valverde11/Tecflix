@@ -11,6 +11,9 @@ export function AppLayout() {
         <Link to="/videos" className={styles.brand}>
           Tecflix
         </Link>
+        <Link to="/upload" className={styles.upload}>
+          Subir video
+        </Link>
         <span className={styles.username}>{user?.username}</span>
         <button type="button" className={styles.logout} onClick={logout}>
           Cerrar sesión
