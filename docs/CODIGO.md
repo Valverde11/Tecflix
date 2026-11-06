@@ -67,3 +67,14 @@ Vite expone al navegador solo las variables que empiezan con `VITE_`; por eso ah
 - **Sesión vencida**: un 401 avisa a `onUnauthorized`, pero **solo si la petición llevaba token**. La API de usuarios también responde 401 a una clave incorrecta en el login, y eso no debe tratarse como sesión vencida.
 
 **Parsers en vez de `as T`:** cada lectura recibe una función que valida el JSON. `SPEC.md` exige validar toda entrada externa. Además, un `as T` no comprueba nada en ejecución: si otra API cambia un campo, la interfaz mostraría `undefined` sin explicación. Con el parser falla de inmediato nombrando el campo.
+
+### W1.2 · Tipos y clientes por API
+
+`src/types/` tiene los modelos de `SPEC.md` y `UsersApi`, `MetadataApi` y `StreamingApi` traducen cada endpoint a un método con tipos. Reciben un `HttpClient`, así que ninguna conoce `fetch`.
+
+- **`JsonObject`**: lee un JSON de tipo `unknown` campo por campo y lanza nombrando el que no cumple. Sustituye a una librería de validación: son pocos modelos y no justifican una dependencia.
+- **Los parsers detectan diferencias de contrato**: metadata responde hoy en snake_case (`uploaded_at`) y `SPEC.md` pide camelCase. Una prueba confirma que eso da un error que nombra `uploadedAt`, en vez de una fecha vacía en pantalla.
+- **`listVideos` solo reenvía `page`, `pageSize`, `sortBy` y `order`**: el enunciado asigna a metadata ordenar y paginar. La web no toca la lista.
+- **`encodeURIComponent` en los ids**: el `videoId` puede venir de la URL del navegador. Sin escaparlo, `../users/1` cambiaría la ruta pedida.
+- **`getManifestUrl` no hace ninguna petición**: Shaka Player descarga el manifiesto y los segmentos por su cuenta y solo necesita la dirección.
+- **La subida no está aquí todavía**: `fetch` no informa el progreso de una subida, así que W5.2 usará `XMLHttpRequest` para la barra de avance.
