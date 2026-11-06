@@ -14,7 +14,9 @@ export function AppLayout() {
         <Link to="/upload" className={styles.upload}>
           Subir video
         </Link>
-        <span className={styles.username}>{user?.username}</span>
+        <span className={styles.username} title={user?.username}>
+          {user?.username}
+        </span>
         <button type="button" className={styles.logout} onClick={logout}>
           Cerrar sesión
         </button>

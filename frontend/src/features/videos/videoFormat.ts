@@ -4,7 +4,8 @@ const SECONDS_PER_HOUR = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 const UNKNOWN_DURATION = '--:--';
 
 const TOPIC_COLORS = ['yellow', 'cyan', 'green', 'magenta', 'red', 'blue'] as const;
-const HASH_MULTIPLIER = 31;
+const FNV_OFFSET_BASIS = 2_166_136_261;
+const FNV_PRIME = 16_777_619;
 
 const dateFormat = new Intl.DateTimeFormat('es-CR', { dateStyle: 'medium' });
 
@@ -31,10 +32,12 @@ export function formatUploadDate(isoDate: string): string {
 
 /** Mismo tema, mismo color: el filo de cada fila permite reconocerlo de un vistazo. */
 export function topicColor(topic: string): string {
-  let colorIndex = 0;
+  // FNV-1a: un hash polinómico con base 31 daría solo la suma de las letras al reducir a 6,
+  // porque 31 mod 6 es 1. Math.imul multiplica en 32 bits, así que nunca desborda.
+  let hash = FNV_OFFSET_BASIS;
   for (const character of topic) {
-    // El módulo en cada paso evita que un tema largo desborde el número.
-    colorIndex = (colorIndex * HASH_MULTIPLIER + character.charCodeAt(0)) % TOPIC_COLORS.length;
+    hash = Math.imul(hash ^ character.charCodeAt(0), FNV_PRIME);
   }
-  return `var(--bar-${TOPIC_COLORS[colorIndex]})`;
+  const unsignedHash = hash >>> 0;
+  return `var(--bar-${TOPIC_COLORS[unsignedHash % TOPIC_COLORS.length]})`;
 }
