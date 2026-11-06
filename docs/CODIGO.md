@@ -86,3 +86,19 @@ MSW intercepta `fetch` y responde como si existiera la API, así las pruebas rec
 - **`onUnhandledFrame: 'error'`**: una ruta sin simular hace fallar la prueba. Así se nota si el código pide algo que nadie contempló.
 - **`handlers.test.ts`** comprueba que los simuladores pasan por los parsers; sin eso, un simulador mal escrito se confundiría con un error de la pantalla probada.
 - **Solo se usa en pruebas por ahora**: no se publica ningún archivo de MSW en la aplicación.
+
+## W2 · Autenticación
+
+### W2.3 · Sesión y rutas protegidas
+
+Se hizo antes que las pantallas porque ambas dependen de ella.
+
+**`SessionStore`** guarda token y usuario. Es una clase común, fuera de React, porque `HttpClient` también necesita leer el token y borrar la sesión ante un 401, y ese código no está dentro de ningún componente. React se entera de los cambios con `useSyncExternalStore`, el mecanismo oficial para leer estado externo. Esto cumple el papel del `AuthContext` del plan sin duplicar el estado en dos lugares: `useAuth()` lee la tienda y no hay copia que pueda desincronizarse.
+
+**`sessionStorage` y no `localStorage`**: la sesión sobrevive a una recarga, pero muere al cerrar la pestaña, lo que reduce la exposición de un token de 8 h en una computadora compartida. Ningún almacenamiento del navegador protege contra XSS; la defensa es que React escapa el contenido y no se inserta HTML crudo. Al restaurar, el dato se valida con el mismo parser de la API y, si está alterado, se descarta.
+
+**`createServices`** arma todos los objetos una sola vez en `main.tsx` y `ServicesContext` los reparte. No hay variables globales: cada prueba crea sus propios servicios y ninguna contamina a otra. También vacía la caché de TanStack Query cuando la sesión termina, sea por cierre manual o por token vencido, para que otra persona en el mismo navegador no vea datos privados.
+
+**Guards**: son rutas padre que deciden antes de mostrar a sus hijas. `RequireAuth` envía a `/login` y guarda en `state.from` a dónde iba la persona. `RedirectIfAuthenticated` saca de login y registro a quien ya tiene sesión y la devuelve a ese destino. Por eso las pantallas no navegan al terminar: guardan la sesión y el cambio de estado dispara la redirección. El mismo mecanismo cubre la sesión vencida: un 401 limpia la tienda y `RequireAuth` redirige sin código adicional.
+
+`global.css` define los colores, las fuentes y los espacios como variables para que ningún componente repita esos valores.

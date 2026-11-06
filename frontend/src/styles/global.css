@@ -1,0 +1,56 @@
+:root {
+  color-scheme: light;
+
+  --color-ink: #14213d;
+  --color-muted: #56607a;
+  --color-paper: #f4f6fb;
+  --color-surface: #ffffff;
+  --color-line: #cfd6e6;
+  --color-action: #2a4fc9;
+  --color-action-strong: #1f3ca0;
+  --color-error: #b3261e;
+
+  /* Carta de ajuste: solo para la franja de marca, nunca como color de interfaz. */
+  --bar-yellow: #f2c230;
+  --bar-cyan: #2fb5c9;
+  --bar-green: #3fa65b;
+  --bar-magenta: #c8479b;
+  --bar-red: #d6423b;
+  --bar-blue: #2a4fc9;
+
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2.5rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+  background: var(--color-paper);
+}
+
+h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-action);
+  outline-offset: 2px;
+}
