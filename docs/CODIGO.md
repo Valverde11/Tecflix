@@ -134,3 +134,12 @@ Limitación conocida: si el registro funciona pero el login posterior falla por 
 ### W2.4 · Pruebas de autenticación
 
 Las pruebas de cada pantalla se escribieron con ella y montan la aplicación completa con `renderApp`: rutas, guards, TanStack Query y `HttpClient` reales, y solo la red simulada. Así prueban el comportamiento que ve la persona y no detalles internos. Esta tarea agrega la prueba directa de `authErrors`, cuya rama de error desconocido no se alcanza desde las pantallas.
+
+### W2.5 · Conexión con la API de usuarios real
+
+Se recorrió el flujo en Chrome contra `user-service` real, con datos temporales y secretos de un solo uso: 17 comprobaciones, entre ellas registro, recarga, cierre de sesión, clave incorrecta, usuario duplicado sin distinguir mayúsculas, token alterado, CORS y ausencia de scroll horizontal en móvil. Esto cubre lo que MSW no puede: CORS solo existe en un navegador.
+
+La prueba encontró dos fallos que las pruebas simuladas no vieron:
+
+- **Se perdía el destino**: quien iba a `/upload`, llegaba al login y pasaba a "Crear cuenta" terminaba en `/videos`, porque un `Link` no conserva el `state`. Ahora los enlaces entre login y registro lo pasan.
+- **Faltaba el favicon**: el navegador pedía `/favicon.ico` y recibía 404. Se agregó `public/favicon.svg`, unas barras de ajuste en miniatura.

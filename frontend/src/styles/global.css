@@ -11,6 +11,7 @@
   --color-error: #b3261e;
 
   /* Carta de ajuste: solo para la franja de marca, nunca como color de interfaz. */
+  --bar-gray: #c4cbda;
   --bar-yellow: #f2c230;
   --bar-cyan: #2fb5c9;
   --bar-green: #3fa65b;

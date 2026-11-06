@@ -14,7 +14,7 @@
 .bars {
   background: linear-gradient(
     to right,
-    var(--color-paper) 0 14.28%,
+    var(--bar-gray) 0 14.28%,
     var(--bar-yellow) 14.28% 28.57%,
     var(--bar-cyan) 28.57% 42.85%,
     var(--bar-green) 42.85% 57.14%,
@@ -52,7 +52,8 @@
   font-size: clamp(3.5rem, 9vw, 8rem);
   font-weight: 800;
   line-height: 1;
-  letter-spacing: -0.03em;
+  font-variant-ligatures: none;
+  letter-spacing: -0.01em;
 }
 
 .tagline {

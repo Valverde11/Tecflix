@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { TextField } from '../../components/TextField';
 import styles from './AuthForm.module.css';
 import { AuthLayout } from './AuthLayout';
@@ -7,6 +7,8 @@ import { useRegisterForm } from './useRegisterForm';
 
 export function RegisterPage() {
   const { form, isSubmitting, formError, submit } = useRegisterForm();
+  // Conserva a dónde iba la persona si cambia entre login y registro.
+  const location: { state: unknown } = useLocation();
 
   return (
     <AuthLayout title="Crear cuenta">
@@ -62,7 +64,10 @@ export function RegisterPage() {
         </button>
       </form>
       <p className={styles.switch}>
-        ¿Ya tienes cuenta? <Link to="/login">Iniciar sesión</Link>
+        ¿Ya tienes cuenta?{' '}
+        <Link to="/login" state={location.state}>
+          Iniciar sesión
+        </Link>
       </p>
     </AuthLayout>
   );
