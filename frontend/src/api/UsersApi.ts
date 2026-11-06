@@ -18,7 +18,7 @@ export function parseUser(data: unknown): User {
   };
 }
 
-function parseLoginResponse(data: unknown): Session {
+export function parseSession(data: unknown): Session {
   const json = new JsonObject(data);
   return { token: json.string('token'), user: parseUser(json.value('user')) };
 }
@@ -35,7 +35,7 @@ export class UsersApi {
   }
 
   login(credentials: Credentials): Promise<Session> {
-    return this.http.post('/api/auth/login', credentials, parseLoginResponse);
+    return this.http.post('/api/auth/login', credentials, parseSession);
   }
 
   getCurrentUser(): Promise<User> {
