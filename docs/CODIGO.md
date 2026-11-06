@@ -168,3 +168,12 @@ El contrato no incluye miniaturas, así que una cuadrícula de tarjetas tendría
 - **`formatDuration` muestra `--:--` si la duración es 0**: un video recién subido todavía no la tiene.
 - **Solo se avisa el estado si no es `ready`**: el caso normal no necesita texto.
 - **"Administrar" solo aparece en videos propios**, comparando `ownerId` con el usuario de la sesión. Es comodidad de interfaz: quien protege de verdad es la API, que debe rechazar los cambios de quien no es dueño. Lleva a la página del video, donde W5 pondrá editar, cambiar acceso y borrar, para no mostrar botones que aún no hacen nada.
+
+### W3.2 · Orden y paginación en la URL
+
+`useVideoListParams` lee `?page=` y `?sort=` y arma la consulta. La URL es la fuente de verdad, no un `useState`: por eso recargar, compartir el enlace y el botón Atrás funcionan sin código adicional. Cambiar de página es navegar, y `Pagination` usa enlaces reales.
+
+- **Un solo selector de orden**: cada opción combina campo y dirección ("Título de la A a la Z"). Dos controles permitirían la combinación poco natural "Fecha ascendente" sin explicar qué significa.
+- **Los valores de la URL se validan**: cualquiera puede escribir `?page=abc`. Lo inválido vuelve al valor por defecto y no llega a la API.
+- **Cambiar el orden vuelve a la página 1**: con otro orden, la página actual muestra otros videos y quedarse ahí no tiene sentido.
+- **`totalPages` se calcula con lo que informa la API** (`total` y `pageSize`). Esa cuenta decide qué enlaces mostrar; no pagina datos.
