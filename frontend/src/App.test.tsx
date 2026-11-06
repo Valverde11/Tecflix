@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { App } from './App';
 
 describe('App', () => {
-  it('muestra el nombre de la aplicación', () => {
+  it('arranca en la pantalla de inicio de sesión', () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'Tecflix' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Iniciar sesión' })).toBeInTheDocument();
   });
 });
