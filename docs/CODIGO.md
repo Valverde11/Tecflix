@@ -40,3 +40,12 @@ Vitest reutiliza la configuración de Vite, así que las pruebas compilan igual 
 - `src/components/`, `src/hooks/`, `src/types/`: lo que comparten varias funciones.
 
 Git no guarda carpetas vacías, por eso llevan un `.gitkeep` que se borra al agregar el primer archivo real.
+
+### W0.5 · Rutas
+
+React Router decide qué página mostrar según la URL, sin recargar. Las páginas todavía son provisionales: W2 a W5 las reemplazan.
+
+- **`App` y `AppRoutes` separados**: `App` aporta `BrowserRouter`, que necesita el navegador real; `AppRoutes` solo declara las rutas. Así las pruebas usan `MemoryRouter` y arrancan en cualquier URL.
+- **`/` redirige a `/login`**: el enunciado pide que al entrar se vea el formulario. Una ruta desconocida también vuelve a `/`.
+- **`replace` en las redirecciones**: evita que el botón Atrás regrese a `/` y vuelva a redirigir sin fin.
+- **Rutas protegidas sin guard por ahora**: `/videos`, `/videos/:id` y `/upload` se protegen en W2.3, cuando exista `AuthContext`.
