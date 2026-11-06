@@ -190,3 +190,10 @@ El contrato no incluye miniaturas, así que una cuadrícula de tarjetas tendría
 - **Sesión vencida**: un 401 de metadata limpia la sesión en `HttpClient` y `RequireAuth` redirige. La página no necesita código para este caso; una prueba lo confirma.
 
 También se agregó al encabezado el enlace "Subir video", para llegar a esa pantalla desde cualquier lugar.
+
+### Verificación de W3 en el navegador
+
+Se recorrió la lista en Chrome con la API de usuarios real y metadata simulada: paginar, ordenar, recargar, botón Atrás, página fuera de rango y vista móvil. Esto reveló dos problemas que las pruebas no vieron:
+
+- **Temas distintos con el mismo color**: el primer hash era polinómico con base 31. Como 31 mod 6 es 1, al reducir a 6 colores el resultado era solo la suma de las letras. Cambiar el módulo intermedio no lo resolvía: en un tema corto ese módulo nunca actúa. Por eso se usa FNV-1a, un hash estándar de 32 bits; `Math.imul` multiplica en 32 bits y no desborda con temas largos. Una prueba con anagramas falla con el hash anterior. Con 6 colores siempre habrá coincidencias, y por eso el tema también va escrito.
+- **Encabezado partido en móvil**: "Subir video" y "Cerrar sesión" ocupaban dos líneas. Ahora cada texto se mantiene en una línea, el encabezado se reacomoda y un nombre largo se recorta con puntos suspensivos, con el nombre completo en `title`.

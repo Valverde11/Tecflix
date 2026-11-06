@@ -48,6 +48,12 @@ describe('topicColor', () => {
   it('distribuye temas distintos entre varios colores', () => {
     const topics = ['Redes', 'Video', 'Programación', 'Estructuras de datos', 'Física', 'Cálculo'];
 
-    expect(new Set(topics.map(topicColor)).size).toBeGreaterThan(1);
+    expect(new Set(topics.map(topicColor)).size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('depende del orden de las letras, no solo de cuáles son', () => {
+    const anagrams = ['Redes', 'Sedre', 'Deres', 'Seder', 'Eersd', 'Dseer'];
+
+    expect(new Set(anagrams.map(topicColor)).size).toBeGreaterThan(1);
   });
 });
