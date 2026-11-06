@@ -29,6 +29,15 @@ describe('RegisterPage', () => {
     expect(services.sessionStore.getSession()?.user.username).toBe('luis');
   });
 
+  it('conserva la página pedida al pasar por el login', async () => {
+    renderApp('/upload');
+    await userEvent.click(screen.getByRole('link', { name: 'Crear cuenta' }));
+
+    await fillAndSubmit();
+
+    expect(await screen.findByRole('heading', { name: 'Subir video' })).toBeInTheDocument();
+  });
+
   it('no envía la confirmación de contraseña a la API', async () => {
     let received: unknown = null;
     server.use(
