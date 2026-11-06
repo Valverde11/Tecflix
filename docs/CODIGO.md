@@ -32,3 +32,11 @@ Vitest reutiliza la configuración de Vite, así que las pruebas compilan igual 
 - **`src/test/setup.ts`**: agrega comparadores como `toBeInTheDocument` y limpia el DOM después de cada prueba, para que ninguna dependa de lo que dejó la anterior.
 - **Imports explícitos de `vitest`**: se usan `describe` e `it` importados, no globales, así cada archivo declara de dónde viene lo que usa.
 - **Umbral de cobertura del 80 %**: es la meta de `SPEC.md` para la V1.0. `npm run coverage` falla si baja, de modo que la cobertura se mantiene durante el desarrollo y no se persigue al final. `main.tsx` queda fuera porque solo conecta React con el HTML.
+
+### W0.4 · Estructura de carpetas
+
+- `src/api/`: el único lugar con llamadas HTTP (regla de `SPEC.md`). Si cambia un contrato, solo se toca esta carpeta.
+- `src/features/{auth,videos,player,upload}/`: el código se agrupa por función, no por tipo de archivo; lo que cambia junto vive junto.
+- `src/components/`, `src/hooks/`, `src/types/`: lo que comparten varias funciones.
+
+Git no guarda carpetas vacías, por eso llevan un `.gitkeep` que se borra al agregar el primer archivo real.
