@@ -102,3 +102,19 @@ Se hizo antes que las pantallas porque ambas dependen de ella.
 **Guards**: son rutas padre que deciden antes de mostrar a sus hijas. `RequireAuth` envía a `/login` y guarda en `state.from` a dónde iba la persona. `RedirectIfAuthenticated` saca de login y registro a quien ya tiene sesión y la devuelve a ese destino. Por eso las pantallas no navegan al terminar: guardan la sesión y el cambio de estado dispara la redirección. El mismo mecanismo cubre la sesión vencida: un 401 limpia la tienda y `RequireAuth` redirige sin código adicional.
 
 `global.css` define los colores, las fuentes y los espacios como variables para que ningún componente repita esos valores.
+
+### W2.2 · Inicio de sesión
+
+La pantalla se divide en tres piezas para cumplir la regla de `SPEC.md` de mantener la lógica en hooks:
+
+- **`useForm`**: valores y errores de un formulario. Es genérico, porque lo reutilizan el registro y luego la edición de videos. Al escribir en un campo se borra su error: el mensaje ya no describe lo que hay escrito.
+- **`useLoginForm`**: valida y envía con `useMutation` de TanStack Query, que da gratis los estados de carga y error. Al terminar guarda la sesión; la redirección la hace `RedirectIfAuthenticated`.
+- **`LoginPage`**: solo dibuja.
+
+**Mensajes**: `authErrors.ts` traduce por `code` y no por texto. El error de login es el mismo para usuario inexistente y contraseña incorrecta porque la API lo diseñó así para no revelar qué usuarios existen; la web mantiene esa decisión.
+
+**Accesibilidad**: `TextField` enlaza etiqueta, campo y mensaje con `htmlFor`, `aria-invalid` y `aria-describedby`, así un lector de pantalla anuncia el error al entrar al campo. Las pruebas buscan por esos atributos, de modo que un cambio que rompa la accesibilidad también rompe la prueba.
+
+**El botón se desactiva mientras espera**: el hash de la contraseña tarda cerca de un segundo y un doble clic mandaría dos peticiones.
+
+**Diseño**: el panel de marca imita una carta de ajuste, la imagen clásica de prueba de video, con barras de color arriba y banda oscura abajo. Las barras son un único `linear-gradient`, sin imágenes, y su animación se apaga con `prefers-reduced-motion`. Las fuentes vienen de Google Fonts; si no cargan, se usa la del sistema.
