@@ -130,3 +130,7 @@ La pantalla se divide en tres piezas para cumplir la regla de `SPEC.md` de mante
 - **Tras registrarse se inicia sesión automáticamente**: `POST /api/users` no devuelve token, así que se llama al login con los datos recién escritos.
 
 Limitación conocida: si el registro funciona pero el login posterior falla por red, la persona ve el error de conexión y, al reintentar, "ese usuario ya existe". Basta con entrar desde "Iniciar sesión".
+
+### W2.4 · Pruebas de autenticación
+
+Las pruebas de cada pantalla se escribieron con ella y montan la aplicación completa con `renderApp`: rutas, guards, TanStack Query y `HttpClient` reales, y solo la red simulada. Así prueban el comportamiento que ve la persona y no detalles internos. Esta tarea agrega la prueba directa de `authErrors`, cuya rama de error desconocido no se alcanza desde las pantallas.
