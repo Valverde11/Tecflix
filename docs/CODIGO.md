@@ -55,3 +55,15 @@ React Router decide qué página mostrar según la URL, sin recargar. Las págin
 Vite expone al navegador solo las variables que empiezan con `VITE_`; por eso ahí no debe ir ningún secreto. `.env.example` documenta las tres URLs y el `.env` real no se sube.
 
 `src/api/apiConfig.ts` las valida al leerlas. Sin esa validación, una variable faltante produciría peticiones a `undefined/api/users` y un error difícil de rastrear. Con ella, el error nombra la variable. `loadApiConfig` recibe el entorno como parámetro en vez de leer `import.meta.env` por dentro, así las pruebas le pasan cualquier combinación sin alterar el proceso. También quita la barra final de la URL, porque las rutas ya empiezan con `/`.
+
+## W1 · Cliente HTTP y tipos
+
+### W1.1 · `HttpClient` y `ApiError`
+
+`HttpClient` es el único lugar de la web que llama a `fetch`. Hay una instancia por API, cada una con su URL base. Centraliza tres cosas que de otro modo se repetirían en cada llamada:
+
+- **Token**: lo pide a `AuthHandler` en cada petición y lo envía como `Authorization: Bearer`. Recibe esa interfaz, no la sesión concreta, para poder probarlo sin ella.
+- **Errores**: todo fallo sale como `ApiError` con `status` y `code`. Las pantallas deciden por `code`, que es estable, y no por el texto. Si el servidor responde sin JSON (un proxy caído) se usa `http_error`; si no hubo respuesta, `network_error` con status 0; si un 2xx trae algo inesperado, `invalid_response`.
+- **Sesión vencida**: un 401 avisa a `onUnauthorized`, pero **solo si la petición llevaba token**. La API de usuarios también responde 401 a una clave incorrecta en el login, y eso no debe tratarse como sesión vencida.
+
+**Parsers en vez de `as T`:** cada lectura recibe una función que valida el JSON. `SPEC.md` exige validar toda entrada externa. Además, un `as T` no comprueba nada en ejecución: si otra API cambia un campo, la interfaz mostraría `undefined` sin explicación. Con el parser falla de inmediato nombrando el campo.
