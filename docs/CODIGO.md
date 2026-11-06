@@ -159,3 +159,12 @@ Con `VITE_MOCK_METADATA=true`, `main.tsx` activa esos mismos simuladores en el n
 La web solo reenvía `page`, `pageSize`, `sortBy` y `order` y dibuja `items` tal como llegan. Una prueba responde títulos desordenados a propósito y comprueba que se muestran en ese mismo orden: si alguien agregara un `sort` en la web, fallaría. La API ya devuelve propios y públicos juntos, y por eso la web tampoco filtra.
 
 Las consultas no se reintentan solas (`retry: false`): repetir un 4xx no cambia nada y los reintentos retrasarían varios segundos el mensaje de error.
+
+### W3.4 · Fila de video
+
+El contrato no incluye miniaturas, así que una cuadrícula de tarjetas tendría recuadros vacíos. `VideoCard` se dibuja como una fila de guía de programación: duración grande, título y datos, y a la derecha el acceso y el estado.
+
+- **El color del filo depende del tema**: `topicColor` calcula un hash del texto y elige un color de la carta de ajuste. No decora: videos del mismo tema se reconocen de un vistazo. El tema también está escrito, porque el color por sí solo no basta para quien no lo distingue.
+- **`formatDuration` muestra `--:--` si la duración es 0**: un video recién subido todavía no la tiene.
+- **Solo se avisa el estado si no es `ready`**: el caso normal no necesita texto.
+- **"Administrar" solo aparece en videos propios**, comparando `ownerId` con el usuario de la sesión. Es comodidad de interfaz: quien protege de verdad es la API, que debe rechazar los cambios de quien no es dueño. Lleva a la página del video, donde W5 pondrá editar, cambiar acceso y borrar, para no mostrar botones que aún no hacen nada.
