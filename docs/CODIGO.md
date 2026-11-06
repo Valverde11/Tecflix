@@ -151,3 +151,11 @@ La prueba encontró dos fallos que las pruebas simuladas no vieron:
 `src/test/videoCatalog.ts` es un catálogo de 25 videos y `queryCatalog` ordena y pagina como lo hará la API de metadata según `SPEC.md`. Está en la carpeta de pruebas porque representa al servidor: la web de verdad nunca ejecuta esa lógica.
 
 Con `VITE_MOCK_METADATA=true`, `main.tsx` activa esos mismos simuladores en el navegador durante el desarrollo. Solo se intercepta metadata; lo demás sale a la red, así que la API de usuarios sigue siendo la real. El plugin `msw/vite` sirve el worker en desarrollo y la comprobación de `import.meta.env.DEV` permite que el build lo elimine: se verificó que `dist/` no contiene ni el worker ni el catálogo.
+
+### W3.1 · Página de listado
+
+`useVideoList` consulta con `useQuery` de TanStack Query. La clave de caché incluye los parámetros (`['videos', query]`), así que cada combinación de página y orden se guarda por separado y volver a una página ya vista es inmediato. `keepPreviousData` deja la página anterior a la vista mientras llega la nueva.
+
+La web solo reenvía `page`, `pageSize`, `sortBy` y `order` y dibuja `items` tal como llegan. Una prueba responde títulos desordenados a propósito y comprueba que se muestran en ese mismo orden: si alguien agregara un `sort` en la web, fallaría. La API ya devuelve propios y públicos juntos, y por eso la web tampoco filtra.
+
+Las consultas no se reintentan solas (`retry: false`): repetir un 4xx no cambia nada y los reintentos retrasarían varios segundos el mensaje de error.
