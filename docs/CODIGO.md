@@ -78,3 +78,11 @@ Vite expone al navegador solo las variables que empiezan con `VITE_`; por eso ah
 - **`encodeURIComponent` en los ids**: el `videoId` puede venir de la URL del navegador. Sin escaparlo, `../users/1` cambiaría la ruta pedida.
 - **`getManifestUrl` no hace ninguna petición**: Shaka Player descarga el manifiesto y los segmentos por su cuenta y solo necesita la dirección.
 - **La subida no está aquí todavía**: `fetch` no informa el progreso de una subida, así que W5.2 usará `XMLHttpRequest` para la barra de avance.
+
+### W1.3 · Servidor simulado con MSW
+
+MSW intercepta `fetch` y responde como si existiera la API, así las pruebas recorren el `HttpClient` y los parsers reales sin servicios corriendo (`SPEC.md` 6.4). Los simuladores están en `src/test/handlers.ts` y usan los mismos códigos de error de la API de usuarios real.
+
+- **`onUnhandledFrame: 'error'`**: una ruta sin simular hace fallar la prueba. Así se nota si el código pide algo que nadie contempló.
+- **`handlers.test.ts`** comprueba que los simuladores pasan por los parsers; sin eso, un simulador mal escrito se confundiría con un error de la pantalla probada.
+- **Solo se usa en pruebas por ahora**: no se publica ningún archivo de MSW en la aplicación.
