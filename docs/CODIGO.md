@@ -49,3 +49,9 @@ React Router decide qué página mostrar según la URL, sin recargar. Las págin
 - **`/` redirige a `/login`**: el enunciado pide que al entrar se vea el formulario. Una ruta desconocida también vuelve a `/`.
 - **`replace` en las redirecciones**: evita que el botón Atrás regrese a `/` y vuelva a redirigir sin fin.
 - **Rutas protegidas sin guard por ahora**: `/videos`, `/videos/:id` y `/upload` se protegen en W2.3, cuando exista `AuthContext`.
+
+### W0.6 · Variables de entorno
+
+Vite expone al navegador solo las variables que empiezan con `VITE_`; por eso ahí no debe ir ningún secreto. `.env.example` documenta las tres URLs y el `.env` real no se sube.
+
+`src/api/apiConfig.ts` las valida al leerlas. Sin esa validación, una variable faltante produciría peticiones a `undefined/api/users` y un error difícil de rastrear. Con ella, el error nombra la variable. `loadApiConfig` recibe el entorno como parámetro en vez de leer `import.meta.env` por dentro, así las pruebas le pasan cualquier combinación sin alterar el proceso. También quita la barra final de la URL, porque las rutas ya empiezan con `/`.
