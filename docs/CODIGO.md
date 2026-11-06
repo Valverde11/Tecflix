@@ -118,3 +118,15 @@ La pantalla se divide en tres piezas para cumplir la regla de `SPEC.md` de mante
 **El botón se desactiva mientras espera**: el hash de la contraseña tarda cerca de un segundo y un doble clic mandaría dos peticiones.
 
 **Diseño**: el panel de marca imita una carta de ajuste, la imagen clásica de prueba de video, con barras de color arriba y banda oscura abajo. Las barras son un único `linear-gradient`, sin imágenes, y su animación se apaga con `prefers-reduced-motion`. Las fuentes vienen de Google Fonts; si no cargan, se usa la del sistema.
+
+### W2.1 · Registro
+
+`registerValidation.ts` repite en la web las reglas de `UserValidator`. La API sigue siendo quien decide; la copia evita un viaje al servidor (cada registro calcula un hash que tarda cerca de un segundo) y permite explicar el problema junto al campo.
+
+- **La contraseña se mide en bytes**: el servidor usa el tamaño en UTF-8. En JavaScript `'ñ'.length` es 1, pero ocupa 2 bytes; medir con `length` dejaría pasar contraseñas que el servidor rechaza.
+- **El correo usa un rango ASCII**: `[!-?A-~]` son los caracteres visibles sin `@`, igual que la comprobación de `IsValidEmail`.
+- **Los errores del servidor van a su campo**: `FIELD_BY_ERROR_CODE` asocia `username_taken` con el usuario y `email_taken` con el correo. El resto de errores aparece como mensaje general.
+- **La confirmación de contraseña nunca sale de la web**: se usa para detectar errores de tecleo y no forma parte del contrato.
+- **Tras registrarse se inicia sesión automáticamente**: `POST /api/users` no devuelve token, así que se llama al login con los datos recién escritos.
+
+Limitación conocida: si el registro funciona pero el login posterior falla por red, la persona ve el error de conexión y, al reintentar, "ese usuario ya existe". Basta con entrar desde "Iniciar sesión".
