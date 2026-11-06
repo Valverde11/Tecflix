@@ -12,6 +12,7 @@ import {
   testUser,
   testVideo,
 } from './fixtures';
+import { videoCatalog } from './videoCatalog';
 
 const anonymous = { getToken: () => null, onUnauthorized: () => undefined };
 const usersApi = new UsersApi(new HttpClient(TEST_API_CONFIG.usersApiUrl, anonymous));
@@ -51,16 +52,31 @@ describe('servidor simulado', () => {
     await expect(usersApi.getQuota(testUser.id)).resolves.toMatchObject({ usedBytes: 0 });
   });
 
-  it('responde la lista y el detalle de videos', async () => {
-    const query = { page: 3, pageSize: 10, sortBy: 'title', order: 'asc' } as const;
+  it('ordena y pagina como lo haría metadata', async () => {
+    const query = { page: 2, pageSize: 10, sortBy: 'title', order: 'asc' } as const;
 
-    await expect(metadataApi.listVideos(query)).resolves.toEqual({
-      items: [testVideo],
-      page: 3,
-      pageSize: 10,
-      total: 1,
-    });
+    const page = await metadataApi.listVideos(query);
+
+    expect(page).toMatchObject({ page: 2, pageSize: 10, total: videoCatalog.length });
+    expect(page.items).toHaveLength(10);
+    const titles = page.items.map(({ title }) => title);
+    expect(titles).toEqual(titles.toSorted((a, b) => a.localeCompare(b, 'es')));
+  });
+
+  it('invierte el orden con desc', async () => {
+    const query = { page: 1, pageSize: 25, sortBy: 'uploadedAt', order: 'desc' } as const;
+
+    const { items } = await metadataApi.listVideos(query);
+
+    expect(items[0]?.videoId).toBe(testVideo.videoId);
+  });
+
+  it('responde el detalle y 404 si el video no existe', async () => {
     await expect(metadataApi.getVideo(testVideo.videoId)).resolves.toEqual(testVideo);
+    await expect(metadataApi.getVideo('f'.repeat(32))).rejects.toMatchObject({
+      status: 404,
+      code: 'video_not_found',
+    });
   });
 
   it('responde el estado de la transcodificación', async () => {

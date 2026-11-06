@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { Credentials, NewUser } from '../types/user';
+import type { SortOrder, VideoListQuery, VideoSortField } from '../types/video';
 import {
   TAKEN_EMAIL,
   TAKEN_USERNAME,
@@ -7,8 +8,8 @@ import {
   TEST_PASSWORD,
   testSession,
   testUser,
-  testVideo,
 } from './fixtures';
+import { queryCatalog, videoCatalog } from './videoCatalog';
 
 const { usersApiUrl, metadataApiUrl, streamingApiUrl } = TEST_API_CONFIG;
 
@@ -42,21 +43,37 @@ const usersHandlers = [
   }),
 ];
 
-const metadataHandlers = [
-  http.get(`${metadataApiUrl}/api/metadata/videos`, ({ request }) => {
-    const query = new URL(request.url).searchParams;
-    return HttpResponse.json({
-      items: [testVideo],
-      page: Number(query.get('page')),
-      pageSize: Number(query.get('pageSize')),
-      total: 1,
-    });
-  }),
-  http.get(`${metadataApiUrl}/api/metadata/videos/:videoId`, () => HttpResponse.json(testVideo)),
-];
+function parseListQuery(url: string): VideoListQuery {
+  const query = new URL(url).searchParams;
+  return {
+    page: Number(query.get('page')),
+    pageSize: Number(query.get('pageSize')),
+    sortBy: query.get('sortBy') as VideoSortField,
+    order: query.get('order') as SortOrder,
+  };
+}
+
+/** Recibe la URL porque también se usa en desarrollo, contra la dirección real de metadata. */
+export function createMetadataHandlers(baseUrl: string) {
+  return [
+    http.get(`${baseUrl}/api/metadata/videos`, ({ request }) =>
+      HttpResponse.json(queryCatalog(videoCatalog, parseListQuery(request.url))),
+    ),
+    http.get(`${baseUrl}/api/metadata/videos/:videoId`, ({ params }) => {
+      const video = videoCatalog.find(({ videoId }) => videoId === params.videoId);
+      return video === undefined
+        ? apiError(404, 'video_not_found', 'El video no existe')
+        : HttpResponse.json(video);
+    }),
+  ];
+}
 
 const streamingHandlers = [
   http.get(`${streamingApiUrl}/api/videos/:videoId`, () => HttpResponse.json({ status: 'ready' })),
 ];
 
-export const handlers = [...usersHandlers, ...metadataHandlers, ...streamingHandlers];
+export const handlers = [
+  ...usersHandlers,
+  ...createMetadataHandlers(metadataApiUrl),
+  ...streamingHandlers,
+];
