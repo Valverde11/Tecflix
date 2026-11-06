@@ -37,6 +37,14 @@ describe('topicColor', () => {
     expect(topicColor('tema '.repeat(200))).toMatch(/^var\(--bar-[a-z]+\)$/);
   });
 
+  it('un tema muy largo no cae siempre en el mismo color', () => {
+    const colors = ['a', 'b', 'c', 'd', 'e', 'f'].map((end) =>
+      topicColor('tema '.repeat(500) + end),
+    );
+
+    expect(new Set(colors).size).toBeGreaterThan(1);
+  });
+
   it('distribuye temas distintos entre varios colores', () => {
     const topics = ['Redes', 'Video', 'Programación', 'Estructuras de datos', 'Física', 'Cálculo'];
 
