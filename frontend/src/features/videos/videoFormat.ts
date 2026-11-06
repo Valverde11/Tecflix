@@ -31,9 +31,10 @@ export function formatUploadDate(isoDate: string): string {
 
 /** Mismo tema, mismo color: el filo de cada fila permite reconocerlo de un vistazo. */
 export function topicColor(topic: string): string {
-  const hash = [...topic].reduce(
-    (total, character) => total * HASH_MULTIPLIER + (character.codePointAt(0) ?? 0),
-    0,
-  );
-  return `var(--bar-${TOPIC_COLORS[hash % TOPIC_COLORS.length] ?? 'blue'})`;
+  let colorIndex = 0;
+  for (const character of topic) {
+    // El módulo en cada paso evita que un tema largo desborde el número.
+    colorIndex = (colorIndex * HASH_MULTIPLIER + character.charCodeAt(0)) % TOPIC_COLORS.length;
+  }
+  return `var(--bar-${TOPIC_COLORS[colorIndex]})`;
 }
