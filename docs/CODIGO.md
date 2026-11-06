@@ -15,3 +15,12 @@ Cambios respecto a la plantilla y su porqué:
 - **Sin oxlint**: la plantilla lo trae, pero `SPEC.md` pide ESLint.
 - **Sin `.gitignore` propio**: el de la raíz ya ignora `node_modules/`, `dist/`, `coverage/` y `.env`.
 - **`main.tsx` valida `#root`**: la plantilla usa `!` para decirle al compilador que el elemento existe. Aquí se comprueba y, si falta, el error dice qué pasó.
+
+### W0.2 · ESLint y Prettier
+
+ESLint revisa errores de lógica y Prettier solo el formato. `eslint-config-prettier` apaga las reglas de ESLint que chocarían con Prettier, para que cada herramienta haga una sola cosa.
+
+- **`strictTypeChecked`**: usa la información de tipos del compilador, así detecta problemas que el análisis por sintaxis no ve, como una promesa sin esperar.
+- **`no-explicit-any` y `no-console` como errores** y `--max-warnings 0`: `SPEC.md` los prohíbe y cada mala práctica resta 5 puntos, así que deben detener el lint.
+- **`endOfLine: auto`**: Git convierte a CRLF en Windows y a LF en Linux. Sin esta opción, Prettier marcaría todos los archivos en una de las dos máquinas.
+- **`overrides` de `minimatch` a 11.0.5**: la versión 10 tiene un aviso de denegación de servicio (GHSA-g3hv-75wg-m249). `npm audit fix --force` lo resolvía bajando ESLint de versión mayor; forzar solo este paquete deja `npm audit` limpio. Solo afecta a herramientas de desarrollo, no al código que llega al navegador.
