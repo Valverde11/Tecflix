@@ -10,7 +10,7 @@
   --color-action-strong: #1f3ca0;
   --color-error: #b3261e;
 
-  /* Carta de ajuste: solo para la franja de marca, nunca como color de interfaz. */
+  /* Carta de ajuste: solo como marca (franja y filo de tema), nunca para texto ni acciones. */
   --bar-gray: #c4cbda;
   --bar-yellow: #f2c230;
   --bar-cyan: #2fb5c9;

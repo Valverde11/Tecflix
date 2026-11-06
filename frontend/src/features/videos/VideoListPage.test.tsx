@@ -9,8 +9,8 @@ const LIST_URL = `${TEST_API_CONFIG.metadataApiUrl}/api/metadata/videos`;
 
 async function shownTitles() {
   const list = await screen.findByRole('list', { name: 'Lista de videos' });
-  const items = await within(list).findAllByRole('listitem');
-  return items.map((item) => item.textContent);
+  const headings = await within(list).findAllByRole('heading');
+  return headings.map((heading) => heading.textContent);
 }
 
 describe('VideoListPage', () => {
