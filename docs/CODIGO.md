@@ -143,3 +143,11 @@ La prueba encontró dos fallos que las pruebas simuladas no vieron:
 
 - **Se perdía el destino**: quien iba a `/upload`, llegaba al login y pasaba a "Crear cuenta" terminaba en `/videos`, porque un `Link` no conserva el `state`. Ahora los enlaces entre login y registro lo pasan.
 - **Faltaba el favicon**: el navegador pedía `/favicon.ico` y recibía 404. Se agregó `public/favicon.svg`, unas barras de ajuste en miniatura.
+
+## W3 · Lista de videos
+
+### Metadata simulada mientras no esté integrada
+
+`src/test/videoCatalog.ts` es un catálogo de 25 videos y `queryCatalog` ordena y pagina como lo hará la API de metadata según `SPEC.md`. Está en la carpeta de pruebas porque representa al servidor: la web de verdad nunca ejecuta esa lógica.
+
+Con `VITE_MOCK_METADATA=true`, `main.tsx` activa esos mismos simuladores en el navegador durante el desarrollo. Solo se intercepta metadata; lo demás sale a la red, así que la API de usuarios sigue siendo la real. El plugin `msw/vite` sirve el worker en desarrollo y la comprobación de `import.meta.env.DEV` permite que el build lo elimine: se verificó que `dist/` no contiene ni el worker ni el catálogo.
