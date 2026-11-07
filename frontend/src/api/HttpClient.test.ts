@@ -182,4 +182,130 @@ describe('HttpClient', () => {
     expect(error.code).toBe('invalid_response');
     expect(error.message).toContain('falta id');
   });
+
+  describe('upload', () => {
+    const file = new Blob(['video']);
+    const parseId = (data: unknown) => (data as { id: string }).id;
+
+    class FakeRequest extends EventTarget {
+      static last: FakeRequest;
+      readonly upload = new EventTarget();
+      readonly headers = new Map<string, string>();
+      url = '';
+      body: unknown = null;
+      status = 0;
+      responseText = '';
+      aborted = false;
+
+      constructor() {
+        super();
+        FakeRequest.last = this;
+      }
+
+      open(_method: string, url: string) {
+        this.url = url;
+      }
+
+      setRequestHeader(name: string, value: string) {
+        this.headers.set(name, value);
+      }
+
+      send(body: unknown) {
+        this.body = body;
+      }
+
+      abort() {
+        this.aborted = true;
+        this.dispatchEvent(new Event('abort'));
+      }
+
+      respond(status: number, body: unknown) {
+        this.status = status;
+        this.responseText = JSON.stringify(body);
+        this.dispatchEvent(new Event('load'));
+      }
+    }
+
+    function startUpload(token: string | null, signal = new AbortController().signal) {
+      const onProgress = vi.fn<(fraction: number) => void>();
+      const result = clientWith(token).upload('/api/videos', file, parseId, { onProgress, signal });
+      return { result, onProgress, request: FakeRequest.last };
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal('XMLHttpRequest', FakeRequest);
+    });
+
+    it('envía el archivo crudo con el token y devuelve lo que entrega el parser', async () => {
+      const { result, request } = startUpload(TOKEN);
+
+      request.respond(202, { id: 'abc' });
+
+      await expect(result).resolves.toBe('abc');
+      expect(request.url).toBe(`${BASE_URL}/api/videos`);
+      expect(request.body).toBe(file);
+      expect(request.headers.get('Content-Type')).toBe('application/octet-stream');
+      expect(request.headers.get('Authorization')).toBe(`Bearer ${TOKEN}`);
+    });
+
+    it('no envía Authorization sin sesión', async () => {
+      const { result, request } = startUpload(null);
+
+      request.respond(202, { id: 'abc' });
+
+      await result;
+      expect(request.headers.has('Authorization')).toBe(false);
+    });
+
+    it('informa el avance solo si se conoce el total', async () => {
+      const { result, onProgress, request } = startUpload(TOKEN);
+
+      request.upload.dispatchEvent(
+        new ProgressEvent('progress', { lengthComputable: true, loaded: 1, total: 4 }),
+      );
+      request.upload.dispatchEvent(new ProgressEvent('progress', { lengthComputable: false }));
+      request.respond(202, { id: 'abc' });
+      await result;
+
+      expect(onProgress.mock.calls).toEqual([[0.25]]);
+    });
+
+    it('traduce los errores de la API', async () => {
+      const { result, request } = startUpload(TOKEN);
+
+      request.respond(413, { error: 'upload_too_large' });
+
+      await expect(captureError(result)).resolves.toMatchObject({
+        status: 413,
+        code: 'upload_too_large',
+      });
+    });
+
+    it('avisa la sesión vencida', async () => {
+      const { result, request } = startUpload(TOKEN);
+
+      request.respond(401, { error: 'unauthorized' });
+      await captureError(result);
+
+      expect(onUnauthorized).toHaveBeenCalledOnce();
+    });
+
+    it('convierte una falla de red en un error común', async () => {
+      const { result, request } = startUpload(TOKEN);
+
+      request.dispatchEvent(new Event('error'));
+
+      await expect(captureError(result)).resolves.toMatchObject({ code: 'network_error' });
+    });
+
+    it('cancela con la señal', async () => {
+      const controller = new AbortController();
+      const { result, request } = startUpload(TOKEN, controller.signal);
+
+      controller.abort();
+
+      await expect(captureError(result)).resolves.toMatchObject({ code: 'upload_cancelled' });
+      expect(request.aborted).toBe(true);
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll } from 'vitest';
+import { videoStore } from './handlers';
 import { server } from './server';
 
 // Con todos los archivos en paralelo, un flujo que escribe en varios campos supera 1 s.
@@ -16,6 +17,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  videoStore.reset();
 });
 
 afterAll(() => {

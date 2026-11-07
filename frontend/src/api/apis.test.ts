@@ -140,7 +140,7 @@ describe('MetadataApi', () => {
 
   it('crea, edita y borra un video', async () => {
     respondWith(video, 201);
-    await api.createVideo({ ...details, videoId: VIDEO_ID });
+    await api.createVideo({ ...details, videoId: VIDEO_ID, durationSeconds: 60, sizeBytes: 500 });
     expect(lastCall()).toMatchObject({ url: `${BASE_URL}/api/metadata/videos`, method: 'POST' });
 
     respondWith(video);

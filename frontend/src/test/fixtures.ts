@@ -8,6 +8,7 @@ export const TEST_API_CONFIG: ApiConfig = {
   streamingApiUrl: 'http://streaming.test',
 };
 
+export const UPLOADED_VIDEO_ID = 'b'.repeat(32);
 export const TEST_PASSWORD = 'clave-correcta';
 export const TAKEN_USERNAME = 'ocupado';
 export const TAKEN_EMAIL = 'ocupado@tec.cr';

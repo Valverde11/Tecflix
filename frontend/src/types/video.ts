@@ -46,4 +46,6 @@ export interface VideoDetails {
 
 export interface NewVideo extends VideoDetails {
   readonly videoId: string;
+  readonly durationSeconds: number;
+  readonly sizeBytes: number;
 }
