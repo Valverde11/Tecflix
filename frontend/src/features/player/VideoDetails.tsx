@@ -3,6 +3,7 @@ import { useServices } from '../../hooks/useServices';
 import type { Video } from '../../types/video';
 import { useAuth } from '../auth/useAuth';
 import { formatUploadDate } from '../videos/videoFormat';
+import { VideoOwnerPanel } from '../videos/VideoOwnerPanel';
 import { useTranscodingStatus } from './useTranscodingStatus';
 import styles from './VideoDetails.module.css';
 
@@ -41,6 +42,8 @@ function VideoScreen({ video }: { readonly video: Video }) {
 }
 
 export function VideoDetails({ video }: { readonly video: Video }) {
+  const { user } = useAuth();
+
   return (
     <>
       <VideoScreen video={video} />
@@ -57,6 +60,7 @@ export function VideoDetails({ video }: { readonly video: Video }) {
           ))}
         </ul>
       )}
+      {video.ownerId === user?.id && <VideoOwnerPanel video={video} />}
     </>
   );
 }
