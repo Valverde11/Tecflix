@@ -263,3 +263,11 @@ La subida sigue el flujo 3 de `SPEC.md`: consultar cuota, enviar el archivo a st
 - **Al terminar se refrescan cuota y lista**: la cuota se descuenta cuando streaming conoce el tamaño final, que es en ese momento.
 
 Tras subir, la web abre el detalle del video. Ahí se ve el estado y el reproductor arranca solo cuando el video está listo.
+
+### W5.4 · Editar metadata
+
+`VideoEditForm` reutiliza `VideoFieldsForm`, `findVideoErrors` y `useForm`, los mismos de la subida. `toFieldValues` y `toVideoDetails` convierten entre el video y los textos del formulario; por ejemplo, las etiquetas son una lista en la API y texto separado por comas en pantalla.
+
+`useUpdateVideo` usa la respuesta del `PUT` para actualizar el detalle al instante y marca la lista como desactualizada, porque el título pudo cambiar el orden y eso lo decide la API. Si falla, el formulario sigue abierto con lo escrito.
+
+`VideoOwnerPanel` solo aparece si `ownerId` coincide con el usuario de la sesión. Es comodidad de interfaz: la protección real es que la API rechace al que no es dueño, y la prueba de un 403 cubre cómo se muestra ese rechazo.
