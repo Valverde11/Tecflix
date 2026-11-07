@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TEST_API_CONFIG, testSession, testVideo } from '../../test/fixtures';
 import { renderApp } from '../../test/renderApp';
 import { server } from '../../test/server';
-import type { Video } from '../../types/video';
+import type { Video, VideoStatus } from '../../types/video';
 
 const VIDEO_URL = `${TEST_API_CONFIG.metadataApiUrl}/api/metadata/videos/${testVideo.videoId}`;
 const VIDEO_PATH = `/videos/${testVideo.videoId}`;
@@ -57,16 +57,72 @@ describe('VideoDetailPage', () => {
     expect(screen.queryByRole('list', { name: 'Etiquetas' })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['queued', 'está en cola'],
-    ['processing', 'se está procesando'],
-    ['failed', 'No se pudo procesar'],
-  ] as const)('no carga el reproductor si el estado es %s', async (status, text) => {
-    serveVideo({ status });
-    renderApp(VIDEO_PATH, testSession);
+  describe('transcodificación', () => {
+    const STATUS_URL = `${TEST_API_CONFIG.streamingApiUrl}/api/videos/${testVideo.videoId}`;
 
-    expect(await screen.findByText(new RegExp(text))).toBeInTheDocument();
-    expect(screen.queryByText(/^Reproductor/)).not.toBeInTheDocument();
+    function serveStatus(...statuses: readonly VideoStatus[]) {
+      let call = 0;
+      server.use(
+        http.get(STATUS_URL, () => {
+          const status = statuses[Math.min(call, statuses.length - 1)];
+          call += 1;
+          return HttpResponse.json({ status });
+        }),
+      );
+      return () => call;
+    }
+
+    it.each([
+      ['queued', 'está en cola'],
+      ['processing', 'se está procesando'],
+      ['failed', 'No se pudo procesar'],
+    ] as const)('con estado %s no carga el reproductor', async (status, text) => {
+      serveVideo({ status });
+      serveStatus(status);
+      renderApp(VIDEO_PATH, testSession);
+
+      expect(await screen.findByText(new RegExp(text))).toBeInTheDocument();
+      expect(screen.queryByText(/^Reproductor/)).not.toBeInTheDocument();
+    });
+
+    it('no consulta a streaming si metadata ya dice que está listo', async () => {
+      const calls = serveStatus('ready');
+      renderApp(VIDEO_PATH, testSession);
+
+      await screen.findByText(/^Reproductor/);
+
+      expect(calls()).toBe(0);
+    });
+
+    it('confía en streaming aunque metadata siga atrasada', async () => {
+      serveVideo({ status: 'queued' });
+      serveStatus('ready');
+      renderApp(VIDEO_PATH, testSession);
+
+      expect(await screen.findByText(/^Reproductor/)).toBeInTheDocument();
+    });
+
+    it('empieza solo cuando termina de procesarse y actualiza la cuota', async () => {
+      serveVideo({ status: 'processing' });
+      const calls = serveStatus('processing', 'ready');
+      const services = renderApp(VIDEO_PATH, testSession);
+      const quotaKey = ['quota', testSession.user.id];
+      services.queryClient.setQueryData(quotaKey, { quotaBytes: 1000, usedBytes: 0 });
+
+      expect(await screen.findByText(/se está procesando/)).toBeInTheDocument();
+      expect(await screen.findByText(/^Reproductor/)).toBeInTheDocument();
+
+      expect(calls()).toBe(2);
+      expect(services.queryClient.getQueryState(quotaKey)?.isInvalidated).toBe(true);
+    });
+
+    it('sigue mostrando el estado de metadata si streaming no responde', async () => {
+      serveVideo({ status: 'processing' });
+      server.use(http.get(STATUS_URL, () => HttpResponse.error()));
+      renderApp(VIDEO_PATH, testSession);
+
+      expect(await screen.findByText(/se está procesando/)).toBeInTheDocument();
+    });
   });
 
   it('avisa mientras carga', async () => {

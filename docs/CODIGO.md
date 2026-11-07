@@ -252,3 +252,14 @@ La subida sigue el flujo 3 de `SPEC.md`: consultar cuota, enviar el archivo a st
 - **Privado por defecto**: publicar debe ser una decisión explícita.
 
 `VITE_MOCK_METADATA` pasó a llamarse `VITE_MOCK_VIDEO_APIS`, porque ahora simula metadata y streaming. `FakeVideoStore` guarda los cambios como una base de datos falsa y las pruebas la reinician después de cada caso.
+
+### W5.3 · Estado de la transcodificación
+
+`useTranscodingStatus` pregunta a streaming cada 3 segundos mientras metadata no diga `ready`, y deja de hacerlo al llegar a `ready` o `failed`. Lo resuelve `refetchInterval` de TanStack Query, que además se detiene solo al salir de la página.
+
+- **Streaming manda sobre metadata**: es quien transcodifica. `SPEC.md` no dice quién actualiza `status` en metadata, así que si la web confiara solo en ese campo un video podría quedar en cola para siempre. Con esta consulta el detalle funciona aunque metadata esté atrasada, sin cambiar ningún contrato. La lista sí sigue mostrando lo que diga metadata.
+- **Se usa `getStatus` solo si hace falta**: un video que metadata ya marca como listo no genera consultas a streaming.
+- **Si streaming no responde se conserva el estado de metadata**: la consulta sigue intentando, sin mostrar un error por un fallo pasajero.
+- **Al terminar se refrescan cuota y lista**: la cuota se descuenta cuando streaming conoce el tamaño final, que es en ese momento.
+
+Tras subir, la web abre el detalle del video. Ahí se ve el estado y el reproductor arranca solo cuando el video está listo.
