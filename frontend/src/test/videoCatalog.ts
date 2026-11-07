@@ -48,6 +48,41 @@ export const videoCatalog: readonly Video[] = [
   ...LESSONS.map((_lesson, index) => createLesson(index, 1)),
 ];
 
+/** Hace de base de datos de metadata: las pruebas la reinician y el navegador la conserva. */
+export class FakeVideoStore {
+  private videos = [...videoCatalog];
+
+  reset(): void {
+    this.videos = [...videoCatalog];
+  }
+
+  all(): readonly Video[] {
+    return this.videos;
+  }
+
+  find(videoId: string): Video | undefined {
+    return this.videos.find((video) => video.videoId === videoId);
+  }
+
+  add(video: Video): void {
+    this.videos.push(video);
+  }
+
+  update(videoId: string, changes: Partial<Video>): Video | undefined {
+    const current = this.find(videoId);
+    if (current === undefined) {
+      return undefined;
+    }
+    const updated = { ...current, ...changes };
+    this.videos = this.videos.map((video) => (video === current ? updated : video));
+    return updated;
+  }
+
+  remove(videoId: string): void {
+    this.videos = this.videos.filter((video) => video.videoId !== videoId);
+  }
+}
+
 function compareBy(field: VideoSortField) {
   return (a: Video, b: Video) => a[field].localeCompare(b[field], 'es');
 }

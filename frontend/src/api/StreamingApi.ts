@@ -1,11 +1,15 @@
 import { VIDEO_STATUSES, type VideoStatus } from '../types/video';
-import type { HttpClient } from './HttpClient';
+import type { HttpClient, UploadOptions } from './HttpClient';
 import { JsonObject } from './JsonObject';
 
 const VIDEOS_PATH = '/api/videos';
 
 function parseStatus(data: unknown): VideoStatus {
   return new JsonObject(data).oneOf('status', VIDEO_STATUSES);
+}
+
+function parseUploadedId(data: unknown): string {
+  return new JsonObject(data).string('id');
 }
 
 function videoPath(videoId: string): string {
@@ -19,6 +23,11 @@ export class StreamingApi {
   constructor(http: HttpClient, baseUrl: string) {
     this.http = http;
     this.baseUrl = baseUrl;
+  }
+
+  /** Devuelve el `videoId` que generó streaming. */
+  uploadVideo(file: Blob, options: UploadOptions): Promise<string> {
+    return this.http.upload(VIDEOS_PATH, file, parseUploadedId, options);
   }
 
   getStatus(videoId: string): Promise<VideoStatus> {

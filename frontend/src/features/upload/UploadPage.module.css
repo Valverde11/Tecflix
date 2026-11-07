@@ -1,0 +1,104 @@
+.page {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 36rem;
+}
+
+.form,
+.fieldset {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.label {
+  padding: 0;
+  font-weight: 700;
+}
+
+.visibility {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.visibility legend {
+  margin-bottom: var(--space-1);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.fileError {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-error);
+}
+
+.formError {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--color-error);
+  border-left: 3px solid var(--color-error);
+}
+
+.submit {
+  padding: 0.7rem var(--space-3);
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-surface);
+  background: var(--color-action);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--color-action-strong);
+}
+
+.submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.progress {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.progress p {
+  margin: 0;
+}
+
+.progress progress {
+  width: 100%;
+  height: 0.75rem;
+  accent-color: var(--color-action);
+}
+
+.secondary {
+  justify-self: start;
+  padding: var(--space-1) 0;
+  font: inherit;
+  color: var(--color-action);
+  background: none;
+  border: none;
+  cursor: pointer;
+}

@@ -237,3 +237,18 @@ Esa prueba encontró un bug que las simuladas no podían ver: **"Intentar de nue
 - **`role="meter"`**: un lector de pantalla anuncia el resumen en palabras gracias a `aria-valuetext`. Desde el 90 % la barra cambia de color y el texto sigue diciendo el dato exacto.
 
 También se subieron los tiempos de espera de las pruebas: con todos los archivos en paralelo, los flujos que escriben en varios campos superaban el límite de 1 s y fallaban de forma intermitente.
+
+### W5.2 · Subida
+
+La subida sigue el flujo 3 de `SPEC.md`: consultar cuota, enviar el archivo a streaming y crear la metadata con el `videoId` que devuelve.
+
+- **`HttpClient.upload` usa `XMLHttpRequest`**: `fetch` no informa cuánto se ha enviado y la barra de avance lo necesita. Está dentro de `HttpClient` para reutilizar el token, los errores comunes y el manejo de 401. El archivo se envía crudo como `application/octet-stream`, y el navegador agrega el `Content-Length` que streaming exige.
+- **Preflight CORS**: esa cabecera y `Authorization` hacen que el navegador pregunte primero con `OPTIONS`. Streaming debe responderlo. jsdom también lo aplica, así que las pruebas simulan esa respuesta.
+- **Si la cuota no se conoce, no se sube**: el enunciado prohíbe superarla, y bloquear es el error seguro. La comparación usa el tamaño del archivo original como estimación; el tamaño final transcodificado lo reporta streaming.
+- **Deshacer**: si crear la metadata falla, se borra lo subido, porque sin metadata nadie vería ese video y ocuparía espacio para siempre. Si deshacer también falla, se muestra el error original, que es el que explica el problema.
+- **Cancelar**: un `AbortController` detiene la subida, y también al salir de la página. Cancelar no se muestra como error.
+- **`durationSeconds` y `sizeBytes` los envía la web**: es la única que tiene el archivo cuando se crea la metadata. `readVideoDuration` lee la duración con un `<video>` temporal. Si el navegador no entiende el formato, queda en 0 y la subida sigue.
+- **`videoFields.ts` y `VideoFieldsForm`** son comunes a subir y editar. Los límites (título 200, tema 100, descripción 5000, 20 etiquetas) salen de `video_validation.cpp` y se miden en bytes, igual que allá.
+- **Privado por defecto**: publicar debe ser una decisión explícita.
+
+`VITE_MOCK_METADATA` pasó a llamarse `VITE_MOCK_VIDEO_APIS`, porque ahora simula metadata y streaming. `FakeVideoStore` guarda los cambios como una base de datos falsa y las pruebas la reinician después de cada caso.
