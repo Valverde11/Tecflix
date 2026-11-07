@@ -197,3 +197,16 @@ Se recorrió la lista en Chrome con la API de usuarios real y metadata simulada:
 
 - **Temas distintos con el mismo color**: el primer hash era polinómico con base 31. Como 31 mod 6 es 1, al reducir a 6 colores el resultado era solo la suma de las letras. Cambiar el módulo intermedio no lo resolvía: en un tema corto ese módulo nunca actúa. Por eso se usa FNV-1a, un hash estándar de 32 bits; `Math.imul` multiplica en 32 bits y no desborda con temas largos. Una prueba con anagramas falla con el hash anterior. Con 6 colores siempre habrá coincidencias, y por eso el tema también va escrito.
 - **Encabezado partido en móvil**: "Subir video" y "Cerrar sesión" ocupaban dos líneas. Ahora cada texto se mantiene en una línea, el encabezado se reacomoda y un nombre largo se recorta con puntos suspensivos, con el nombre completo en `title`.
+
+## W4 · Reproducción
+
+### W4.1 · `VideoPlayer` con Shaka Player
+
+Un navegador no reproduce HLS por sí solo, salvo Safari. Shaka descarga el manifiesto `.m3u8`, baja los segmentos `.ts` y los entrega al elemento `<video>` mediante Media Source Extensions (MSE). Chrome no acepta MPEG-TS en MSE, así que Shaka convierte cada segmento a MP4 fragmentado con su propio convertidor.
+
+- **`PlaybackSession` encapsula a Shaka**: el resto de la web no conoce su API, y se prueba sustituyendo el módulo porque jsdom no tiene MSE.
+- **`destroy()` al desmontar**: un reproductor sin destruir sigue descargando segmentos y reteniendo memoria. El efecto de `VideoPlayer` crea una sesión y su limpieza la detiene. En `StrictMode` React monta dos veces a propósito para detectar fugas: una prueba comprueba que toda sesión iniciada también se detiene.
+- **Carga interrumpida**: al salir a mitad de la carga, Shaka rechaza `load()` con un error. `stopped` lo descarta, porque no es un fallo que deba ver la persona.
+- **Token por filtro de peticiones**: Shaka hace sus propias peticiones y no pasa por `HttpClient`, así que `registerRequestFilter` agrega `Authorization` al manifiesto y a cada segmento. Sin eso, un video privado no podría protegerse.
+- **Errores traducidos**: 409 significa que aún se procesa (así lo define streaming), 404 que el archivo ya no existe, y un fallo de red o de CORS se informa como problema de conexión.
+- **Reintentar crea una sesión nueva**: el contador `attempt` es dependencia del efecto. Cambiarlo destruye la sesión fallida y empieza de cero, sin lógica especial de recuperación.
