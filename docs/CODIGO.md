@@ -210,3 +210,12 @@ Un navegador no reproduce HLS por sí solo, salvo Safari. Shaka descarga el mani
 - **Token por filtro de peticiones**: Shaka hace sus propias peticiones y no pasa por `HttpClient`, así que `registerRequestFilter` agrega `Authorization` al manifiesto y a cada segmento. Sin eso, un video privado no podría protegerse.
 - **Errores traducidos**: 409 significa que aún se procesa (así lo define streaming), 404 que el archivo ya no existe, y un fallo de red o de CORS se informa como problema de conexión.
 - **Reintentar crea una sesión nueva**: el contador `attempt` es dependencia del efecto. Cambiarlo destruye la sesión fallida y empieza de cero, sin lógica especial de recuperación.
+
+### W4.2 · Página de detalle
+
+`VideoDetailPage` pide la metadata con `useVideo` y resuelve los estados; `VideoDetails` muestra el reproductor y los datos.
+
+- **`VideoPlayer` se carga con `lazy`**: Shaka pesa unos 870 kB y el resto de la web 307 kB. Quien solo inicia sesión o ve la lista no lo descarga. Por eso el límite del aviso de tamaño del build se subió con su justificación: el fragmento grande es intencional.
+- **Si el video no está `ready`, no se crea el reproductor**: streaming respondería 409. Se explica el estado en el mismo lugar donde iría la imagen.
+- **404 y 403 se muestran igual**: distinguirlos revelaría que existe un video privado ajeno.
+- **Límite conocido**: el estado se lee de metadata, pero `SPEC.md` no dice quién lo actualiza cuando streaming termina. Si nadie lo hace, un video quedaría en `queued` para siempre. Hay que definirlo con el equipo.

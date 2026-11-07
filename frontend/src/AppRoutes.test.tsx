@@ -31,12 +31,19 @@ describe('rutas sin sesión', () => {
 describe('rutas con sesión', () => {
   it.each([
     ['/videos', 'Videos'],
-    ['/videos/abc', 'Reproducir video'],
     ['/upload', 'Subir video'],
   ])('en %s muestra "%s"', (path, heading) => {
     renderApp(path, testSession);
 
     expectHeading(heading);
+  });
+
+  it('la página de un video que no existe lo indica', async () => {
+    renderApp('/videos/abc', testSession);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Este video no existe o no tienes acceso a él' }),
+    ).toBeInTheDocument();
   });
 
   it.each(['/', '/login', '/register'])('%s lleva a los videos', (path) => {

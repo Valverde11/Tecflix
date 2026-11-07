@@ -1,0 +1,41 @@
+.notReady {
+  display: grid;
+  place-content: center;
+  aspect-ratio: 16 / 9;
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-paper);
+  text-align: center;
+  background: var(--color-ink);
+}
+
+.title {
+  margin-top: var(--space-4);
+  font-size: 2rem;
+  overflow-wrap: anywhere;
+}
+
+.byline {
+  margin: var(--space-2) 0 0;
+  color: var(--color-muted);
+}
+
+.description {
+  max-width: 68ch;
+  margin: var(--space-3) 0 0;
+  white-space: pre-line;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags li {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-line);
+}
