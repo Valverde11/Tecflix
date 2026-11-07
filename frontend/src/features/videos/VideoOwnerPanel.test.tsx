@@ -176,4 +176,136 @@ describe('VideoOwnerPanel', () => {
       expect(screen.getByRole('button', { name: 'Hacer privado' })).toBeInTheDocument();
     });
   });
+
+  describe('eliminar', () => {
+    const STREAMING_URL = `${TEST_API_CONFIG.streamingApiUrl}/api/videos/${testVideo.videoId}`;
+
+    function trackDeletes() {
+      const deleted: string[] = [];
+      server.use(
+        http.delete(VIDEO_URL, () => {
+          deleted.push('metadata');
+          videoStore.remove(testVideo.videoId);
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.delete(STREAMING_URL, () => {
+          deleted.push('streaming');
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      return deleted;
+    }
+
+    it('pide confirmación y no borra nada todavía', async () => {
+      const deleted = trackDeletes();
+      await renderDetail();
+
+      await clickButton('Eliminar video');
+
+      expect(screen.getByText(/No se puede deshacer/)).toHaveTextContent(testVideo.title);
+      expect(deleted).toEqual([]);
+    });
+
+    it('cancelar no borra', async () => {
+      const deleted = trackDeletes();
+      await renderDetail();
+      await clickButton('Eliminar video');
+
+      await clickButton('Cancelar');
+
+      expect(screen.getByRole('button', { name: 'Eliminar video' })).toBeInTheDocument();
+      expect(deleted).toEqual([]);
+    });
+
+    it('borra metadata y después streaming, y vuelve a la lista sin el video', async () => {
+      const deleted = trackDeletes();
+      await renderDetail();
+      await clickButton('Eliminar video');
+
+      await clickButton('Sí, eliminar');
+
+      expect(await screen.findByRole('heading', { name: 'Videos' })).toBeInTheDocument();
+      expect(deleted).toEqual(['metadata', 'streaming']);
+      await screen.findByText(/Página 1 de/);
+      expect(screen.queryByRole('link', { name: testVideo.title })).not.toBeInTheDocument();
+    });
+
+    it('marca la cuota como desactualizada', async () => {
+      trackDeletes();
+      const services = await renderDetail();
+      const quotaKey = ['quota', testSession.user.id];
+      services.queryClient.setQueryData(quotaKey, { quotaBytes: 1000, usedBytes: 10 });
+      await clickButton('Eliminar video');
+
+      await clickButton('Sí, eliminar');
+
+      await screen.findByRole('heading', { name: 'Videos' });
+      await waitFor(() => {
+        expect(services.queryClient.getQueryState(quotaKey)?.dataUpdateCount).toBeGreaterThan(1);
+      });
+    });
+
+    it('si streaming ya no tiene el video, cuenta como borrado', async () => {
+      server.use(
+        http.delete(STREAMING_URL, () =>
+          HttpResponse.json({ error: 'video_not_found' }, { status: 404 }),
+        ),
+      );
+      await renderDetail();
+      await clickButton('Eliminar video');
+
+      await clickButton('Sí, eliminar');
+
+      expect(await screen.findByRole('heading', { name: 'Videos' })).toBeInTheDocument();
+    });
+
+    it('un borrado a medias se puede repetir', async () => {
+      let streamingCalls = 0;
+      server.use(
+        http.delete(VIDEO_URL, () => {
+          const exists = videoStore.find(testVideo.videoId) !== undefined;
+          videoStore.remove(testVideo.videoId);
+          return exists
+            ? new HttpResponse(null, { status: 204 })
+            : HttpResponse.json({ error: 'video_not_found' }, { status: 404 });
+        }),
+        http.delete(STREAMING_URL, () => {
+          streamingCalls += 1;
+          return streamingCalls === 1
+            ? HttpResponse.json({ error: 'x', message: 'Disco lleno' }, { status: 503 })
+            : new HttpResponse(null, { status: 204 });
+        }),
+      );
+      await renderDetail();
+      await clickButton('Eliminar video');
+
+      await clickButton('Sí, eliminar');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Disco lleno');
+
+      await clickButton('Sí, eliminar');
+
+      expect(await screen.findByRole('heading', { name: 'Videos' })).toBeInTheDocument();
+      expect(streamingCalls).toBe(2);
+    });
+
+    it('explica si metadata no permite borrar y no sigue con streaming', async () => {
+      let streamingCalls = 0;
+      server.use(
+        http.delete(VIDEO_URL, () =>
+          HttpResponse.json({ error: 'forbidden', message: 'No es tu video' }, { status: 403 }),
+        ),
+        http.delete(STREAMING_URL, () => {
+          streamingCalls += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      await renderDetail();
+      await clickButton('Eliminar video');
+
+      await clickButton('Sí, eliminar');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('No es tu video');
+      expect(streamingCalls).toBe(0);
+    });
+  });
 });

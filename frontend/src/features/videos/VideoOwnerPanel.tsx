@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Video, Visibility } from '../../types/video';
 import { useUpdateVideo } from './useUpdateVideo';
+import { VideoDeleteConfirmation } from './VideoDeleteConfirmation';
 import { VideoEditForm } from './VideoEditForm';
 import { toFieldValues, toVideoDetails } from './videoFields';
 import styles from './VideoOwnerPanel.module.css';
@@ -22,6 +23,7 @@ interface VideoOwnerPanelProps {
 /** Acciones que solo ve el dueño. La API también lo comprueba: esto no es la protección. */
 export function VideoOwnerPanel({ video }: VideoOwnerPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const update = useUpdateVideo(video.videoId);
 
   if (isEditing) {
@@ -30,6 +32,17 @@ export function VideoOwnerPanel({ video }: VideoOwnerPanelProps) {
         video={video}
         onClose={() => {
           setIsEditing(false);
+        }}
+      />
+    );
+  }
+
+  if (isConfirmingDelete) {
+    return (
+      <VideoDeleteConfirmation
+        video={video}
+        onCancel={() => {
+          setIsConfirmingDelete(false);
         }}
       />
     );
@@ -57,6 +70,15 @@ export function VideoOwnerPanel({ video }: VideoOwnerPanelProps) {
           }}
         >
           {VISIBILITY_ACTIONS[video.visibility]}
+        </button>
+        <button
+          type="button"
+          className={`${styles.secondary} ${styles.dangerText}`}
+          onClick={() => {
+            setIsConfirmingDelete(true);
+          }}
+        >
+          Eliminar video
         </button>
       </div>
       {update.error !== null && (
