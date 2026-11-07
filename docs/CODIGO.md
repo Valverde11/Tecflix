@@ -219,3 +219,9 @@ Un navegador no reproduce HLS por sí solo, salvo Safari. Shaka descarga el mani
 - **Si el video no está `ready`, no se crea el reproductor**: streaming respondería 409. Se explica el estado en el mismo lugar donde iría la imagen.
 - **404 y 403 se muestran igual**: distinguirlos revelaría que existe un video privado ajeno.
 - **Límite conocido**: el estado se lee de metadata, pero `SPEC.md` no dice quién lo actualiza cuando streaming termina. Si nadie lo hace, un video quedaría en `queued` para siempre. Hay que definirlo con el equipo.
+
+### Verificación de W4 con video real
+
+Streaming todavía no tiene CORS, así que se generó un HLS real con los mismos parámetros de `FfmpegTranscoder.cpp` y se sirvió con un servidor temporal que imita sus rutas. En Chrome: 13 comprobaciones, entre ellas reproducción (640×360, cuadros decodificados y tiempo avanzando), salto a otro segmento, token en cada petición, fin de las descargas al salir, 409, reintento y ausencia de CORS. Shaka 5 convierte los `.ts` sin `mux.js`.
+
+Esa prueba encontró un bug que las simuladas no podían ver: **"Intentar de nuevo" dejaba la pantalla sin imagen**. `stop()` es asíncrono y la sesión nueva empezaba mientras la anterior se destruía sobre el mismo `<video>`; al terminar, la destrucción le quitaba la fuente. Ahora `previousRelease` encadena las sesiones: cada una espera a que la anterior se libere. Si liberar falla, la siguiente igual puede intentarlo.

@@ -12,15 +12,20 @@ export function VideoPlayer({ manifestUrl, token, title }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const previousRelease = useRef(Promise.resolve());
 
   useEffect(() => {
     if (videoRef.current === null) {
       return undefined;
     }
     const session = new PlaybackSession(videoRef.current, setFailure);
-    void session.start(manifestUrl, token);
+    // Dos sesiones comparten el <video>: si la nueva empieza mientras la anterior se destruye,
+    // esa destrucción le quita la fuente y la pantalla se queda sin imagen.
+    const canStart = previousRelease.current;
+    void canStart.then(() => session.start(manifestUrl, token));
     return () => {
-      void session.stop();
+      // Aunque no se pueda liberar, la siguiente sesión debe poder intentarlo.
+      previousRelease.current = canStart.then(() => session.stop()).catch(() => undefined);
     };
   }, [manifestUrl, token, attempt]);
 

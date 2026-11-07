@@ -52,6 +52,9 @@ export class PlaybackSession {
   }
 
   async start(manifestUrl: string, token: string | null): Promise<void> {
+    if (this.stopped) {
+      return;
+    }
     shaka.polyfill.installAll();
     if (!shaka.Player.isBrowserSupported()) {
       this.onFailure(UNSUPPORTED_BROWSER);
