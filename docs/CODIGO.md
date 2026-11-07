@@ -271,3 +271,9 @@ Tras subir, la web abre el detalle del video. Ahí se ve el estado y el reproduc
 `useUpdateVideo` usa la respuesta del `PUT` para actualizar el detalle al instante y marca la lista como desactualizada, porque el título pudo cambiar el orden y eso lo decide la API. Si falla, el formulario sigue abierto con lo escrito.
 
 `VideoOwnerPanel` solo aparece si `ownerId` coincide con el usuario de la sesión. Es comodidad de interfaz: la protección real es que la API rechace al que no es dueño, y la prueba de un 403 cubre cómo se muestra ese rechazo.
+
+### W5.5 · Cambiar acceso
+
+Es una acción directa con un botón que dice lo que va a pasar ("Hacer privado"). Reutiliza `useUpdateVideo`: `PUT` recibe todos los datos, y `toVideoDetails(toFieldValues(video), visibility)` reenvía los actuales cambiando solo el acceso.
+
+La pantalla no cambia hasta que la API confirma. Mostrar "Privado" antes de tiempo sería peligroso: alguien creería que su video está protegido sin estarlo.
