@@ -277,3 +277,17 @@ Tras subir, la web abre el detalle del video. Ahí se ve el estado y el reproduc
 Es una acción directa con un botón que dice lo que va a pasar ("Hacer privado"). Reutiliza `useUpdateVideo`: `PUT` recibe todos los datos, y `toVideoDetails(toFieldValues(video), visibility)` reenvía los actuales cambiando solo el acceso.
 
 La pantalla no cambia hasta que la API confirma. Mostrar "Privado" antes de tiempo sería peligroso: alguien creería que su video está protegido sin estarlo.
+
+### W5.6 · Eliminar
+
+Borrar pide confirmación en la misma página, nombrando el video y avisando que no se puede deshacer. `useDeleteVideo` sigue el orden de `SPEC.md`: metadata y después streaming.
+
+- **La web no libera la cuota**: `POST /api/users/{id}/quota/usage` exige `X-Service-Token`, justamente para que un usuario no pueda borrar su propio consumo. Lo hace streaming al borrar los archivos, y la web solo vuelve a consultar la cuota.
+- **Borrado repetible**: son dos llamadas y la segunda puede fallar después de que la primera funcionó. `ignoreNotFound` trata un 404 como "ya estaba borrado", así que "Sí, eliminar" se puede pulsar otra vez y completa lo que faltaba. Cualquier otro error detiene el proceso: si metadata rechaza el borrado, streaming no se toca.
+- **`removeQueries` va después de navegar**: quitar el video de la caché mientras la página sigue abierta haría que la consultara otra vez y mostrara un error.
+
+### Verificación de W5 de punta a punta
+
+Se recorrió todo en Chrome sin MSW y con red real: API de usuarios real, y un servidor temporal en el papel de metadata y streaming, con CORS y preflight reales, que reportaba la cuota a `user-service` con `X-Service-Token`. 15 comprobaciones: el archivo llegó completo con `Content-Length`, el preflight se respondió, el detalle mostró el procesamiento y arrancó solo al terminar, el video se reprodujo, se editó, cambió de acceso, la cuota real subió 5 MB, se eliminó y la cuota volvió a 0. Ese servidor imita los contratos de `SPEC.md`, así que no sustituye probar contra las APIs reales.
+
+También se comprobó en Chrome el modo `VITE_MOCK_VIDEO_APIS=true`: catálogo simulado, subida y borrado con un usuario real.
