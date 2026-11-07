@@ -1,3 +1,4 @@
+import { QuotaMeter } from '../upload/QuotaMeter';
 import { SORT_OPTIONS, useVideoListParams } from './useVideoListParams';
 import { VideoListBody } from './VideoListBody';
 import styles from './VideoListPage.module.css';
@@ -24,6 +25,9 @@ export function VideoListPage() {
             ))}
           </select>
         </label>
+      </div>
+      <div className={styles.quota}>
+        <QuotaMeter />
       </div>
       <VideoListBody query={query} searchForPage={searchForPage} />
     </>
