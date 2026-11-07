@@ -4,9 +4,14 @@ import { defineConfig } from 'vitest/config';
 
 // SPEC 6.4: meta de V1.0. Se sube a 90 cuando se trabaje la V2.0.
 const MIN_COVERAGE_PERCENT = 80;
+// Shaka ocupa unos 870 kB, pero va en su propio fragmento y solo se descarga al abrir un video.
+const MAX_CHUNK_KILOBYTES = 1000;
 
 export default defineConfig({
   plugins: [react(), msw()],
+  build: {
+    chunkSizeWarningLimit: MAX_CHUNK_KILOBYTES,
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
