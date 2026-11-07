@@ -125,6 +125,15 @@ describe('PlaybackSession', () => {
     await expect(createSession().stop()).resolves.toBeUndefined();
   });
 
+  it('no arranca si ya la detuvieron', async () => {
+    const session = createSession();
+    await session.stop();
+
+    await session.start(MANIFEST_URL, null);
+
+    expect(shakaMock.player.attach).not.toHaveBeenCalled();
+  });
+
   it('no trata como error una carga interrumpida al salir de la página', async () => {
     const session = createSession();
     let rejectLoad: (reason: Error) => void = () => undefined;

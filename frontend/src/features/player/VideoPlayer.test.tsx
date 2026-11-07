@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,31 +34,37 @@ beforeEach(() => {
 });
 
 describe('VideoPlayer', () => {
-  it('inicia la reproducción con el manifiesto y el token', () => {
+  it('inicia la reproducción con el manifiesto y el token', async () => {
     renderPlayer();
 
-    expect(session.start).toHaveBeenCalledWith(MANIFEST_URL, 'jwt');
+    await waitFor(() => {
+      expect(session.start).toHaveBeenCalledWith(MANIFEST_URL, 'jwt');
+    });
     expect(screen.getByLabelText('Reproductor: Árboles B')).toHaveAttribute('controls');
   });
 
-  it('destruye la sesión al salir de la página', () => {
+  it('destruye la sesión al salir de la página', async () => {
     const { unmount } = renderPlayer();
 
     unmount();
 
-    expect(session.stop).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(session.stop).toHaveBeenCalledOnce();
+    });
   });
 
-  it('cambia de sesión si cambia el video, sin dejar la anterior viva', () => {
+  it('cambia de sesión si cambia el video, sin dejar la anterior viva', async () => {
     const { rerender } = renderPlayer();
 
     rerender(<VideoPlayer manifestUrl="http://otro" token="jwt" title="Otro" />);
 
+    await waitFor(() => {
+      expect(session.start).toHaveBeenLastCalledWith('http://otro', 'jwt');
+    });
     expect(session.stop).toHaveBeenCalledOnce();
-    expect(session.start).toHaveBeenLastCalledWith('http://otro', 'jwt');
   });
 
-  it('en StrictMode cada sesión iniciada también se detiene', () => {
+  it('en StrictMode cada sesión iniciada también se detiene', async () => {
     const { unmount } = render(
       <StrictMode>
         <VideoPlayer manifestUrl={MANIFEST_URL} token={null} title="Árboles B" />
@@ -67,7 +73,9 @@ describe('VideoPlayer', () => {
 
     unmount();
 
-    expect(session.stop).toHaveBeenCalledTimes(session.start.mock.calls.length);
+    await waitFor(() => {
+      expect(session.stop).toHaveBeenCalledTimes(session.instances.length);
+    });
   });
 
   it('muestra el fallo y permite reintentar con una sesión nueva', async () => {
@@ -80,7 +88,46 @@ describe('VideoPlayer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Intentar de nuevo' }));
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(session.start).toHaveBeenCalledTimes(2);
+    });
     expect(session.stop).toHaveBeenCalledOnce();
-    expect(session.start).toHaveBeenCalledTimes(2);
+  });
+
+  it('la sesión nueva espera a que la anterior termine de liberarse', async () => {
+    let finishRelease: () => void = () => undefined;
+    session.stop.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRelease = resolve;
+        }),
+    );
+    const { rerender } = renderPlayer();
+    await waitFor(() => {
+      expect(session.start).toHaveBeenCalledOnce();
+    });
+
+    rerender(<VideoPlayer manifestUrl="http://otro" token="jwt" title="Otro" />);
+    await waitFor(() => {
+      expect(session.stop).toHaveBeenCalledOnce();
+    });
+    expect(session.start).toHaveBeenCalledOnce();
+
+    finishRelease();
+
+    await waitFor(() => {
+      expect(session.start).toHaveBeenLastCalledWith('http://otro', 'jwt');
+    });
+  });
+
+  it('una sesión que no se pudo liberar no bloquea la siguiente', async () => {
+    session.stop.mockRejectedValueOnce(new Error('No se pudo destruir'));
+    const { rerender } = renderPlayer();
+
+    rerender(<VideoPlayer manifestUrl="http://otro" token="jwt" title="Otro" />);
+
+    await waitFor(() => {
+      expect(session.start).toHaveBeenLastCalledWith('http://otro', 'jwt');
+    });
   });
 });
