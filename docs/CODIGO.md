@@ -225,3 +225,15 @@ Un navegador no reproduce HLS por sí solo, salvo Safari. Shaka descarga el mani
 Streaming todavía no tiene CORS, así que se generó un HLS real con los mismos parámetros de `FfmpegTranscoder.cpp` y se sirvió con un servidor temporal que imita sus rutas. En Chrome: 13 comprobaciones, entre ellas reproducción (640×360, cuadros decodificados y tiempo avanzando), salto a otro segmento, token en cada petición, fin de las descargas al salir, 409, reintento y ausencia de CORS. Shaka 5 convierte los `.ts` sin `mux.js`.
 
 Esa prueba encontró un bug que las simuladas no podían ver: **"Intentar de nuevo" dejaba la pantalla sin imagen**. `stop()` es asíncrono y la sesión nueva empezaba mientras la anterior se destruía sobre el mismo `<video>`; al terminar, la destrucción le quitaba la fuente. Ahora `previousRelease` encadena las sesiones: cada una espera a que la anterior se libere. Si liberar falla, la siguiente igual puede intentarlo.
+
+## W5 · Gestión de videos
+
+### W5.1 · Indicador de cuota
+
+`useQuota` consulta `GET /api/users/{id}/quota` y `QuotaMeter` lo muestra en la lista y en la subida. No se usan `usedBytes` de la sesión porque se guardaron al iniciar sesión y dejan de ser ciertos al subir o borrar un video.
+
+- **`formatBytes` divide entre 1000**: la cuota se definió como 1 GB = 10⁹ bytes. Con 1024 la pantalla mostraría 0,93 GB.
+- **`skipToken`**: dice a TanStack Query que no consulte si no hay usuario, sin usar un id inventado.
+- **`role="meter"`**: un lector de pantalla anuncia el resumen en palabras gracias a `aria-valuetext`. Desde el 90 % la barra cambia de color y el texto sigue diciendo el dato exacto.
+
+También se subieron los tiempos de espera de las pruebas: con todos los archivos en paralelo, los flujos que escriben en varios campos superaban el límite de 1 s y fallaban de forma intermitente.

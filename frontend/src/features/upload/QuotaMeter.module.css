@@ -1,0 +1,25 @@
+.quota {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 20rem;
+}
+
+.note {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.track {
+  height: 0.5rem;
+  background: var(--color-line);
+}
+
+.fill {
+  height: 100%;
+  background: var(--color-action);
+}
+
+.fill[data-nearly-full='true'] {
+  background: var(--color-error);
+}
