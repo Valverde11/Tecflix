@@ -116,6 +116,7 @@ Testing/
 /services/streaming-service/storage/
 /services/streaming-service/transcoded/
 /services/streaming-service/tmp/
+/data/
 
 # Archivos de ejecución en la raíz, si se utilizan
 /uploads/

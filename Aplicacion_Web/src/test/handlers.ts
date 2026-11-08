@@ -1,11 +1,11 @@
 import { http, HttpResponse } from 'msw';
 import type { Credentials, NewUser } from '../types/user';
 import type {
-  NewVideo,
   SortOrder,
   VideoDetails,
   VideoListQuery,
   VideoSortField,
+  Video,
 } from '../types/video';
 import {
   TAKEN_EMAIL,
@@ -52,11 +52,31 @@ const usersHandlers = [
 
 function parseListQuery(url: string): VideoListQuery {
   const query = new URL(url).searchParams;
+  const sort = query.get('sort') ?? 'uploaded_at';
   return {
-    page: Number(query.get('page')),
-    pageSize: Number(query.get('pageSize')),
-    sortBy: query.get('sortBy') as VideoSortField,
-    order: query.get('order') as SortOrder,
+    page: Number(query.get('page') ?? 1),
+    pageSize: Number(query.get('page_size') ?? 20),
+    sortBy: (sort === 'uploaded_at' ? 'uploadedAt' : sort) as VideoSortField,
+    order: (query.get('order') ?? 'desc') as SortOrder,
+  };
+}
+
+export function toMetadataJson(video: Video) {
+  return {
+    id: video.videoId,
+    owner_id: String(video.ownerId),
+    owner_name: video.author,
+    title: video.title,
+    description: video.description,
+    topic: video.topic,
+    tags: video.tags,
+    duration_seconds: video.durationSeconds,
+    size_bytes: video.sizeBytes,
+    visibility: video.visibility,
+    uploaded_at: video.uploadedAt,
+    updated_at: video.uploadedAt,
+    genres: [],
+    cast: [],
   };
 }
 
@@ -83,27 +103,42 @@ function notFound() {
 export function createMetadataHandlers(baseUrl: string) {
   const videosUrl = `${baseUrl}/api/metadata/videos`;
   return [
-    http.get(videosUrl, ({ request }) =>
-      HttpResponse.json(queryCatalog(videoStore.all(), parseListQuery(request.url))),
-    ),
+    http.get(videosUrl, ({ request }) => {
+      const page = queryCatalog(videoStore.all(), parseListQuery(request.url));
+      return HttpResponse.json({
+        items: page.items.map(toMetadataJson),
+        page: page.page,
+        page_size: page.pageSize,
+        total: page.total,
+      });
+    }),
     http.post(videosUrl, async ({ request }) => {
-      const video = {
-        ...((await request.json()) as NewVideo),
-        ...ownerOf(request),
-        status: 'queued' as const,
+      const body = (await request.json()) as Record<string, unknown>;
+      const owner = ownerOf(request);
+      const video: Video = {
+        videoId: String(body.id),
+        ownerId: owner.ownerId,
+        author: owner.author,
+        title: String(body.title),
+        description: typeof body.description === 'string' ? body.description : '',
+        topic: typeof body.topic === 'string' ? body.topic : '',
+        tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
+        durationSeconds: Number(body.duration_seconds),
+        sizeBytes: Number(body.size_bytes),
+        visibility: body.visibility === 'public' ? 'public' : 'private',
         uploadedAt: new Date().toISOString(),
       };
       videoStore.add(video);
-      return HttpResponse.json(video, { status: 201 });
+      return HttpResponse.json(toMetadataJson(video), { status: 201 });
     }),
     http.get<{ videoId: string }>(`${videosUrl}/:videoId`, ({ params }) => {
       const video = videoStore.find(params.videoId);
-      return video === undefined ? notFound() : HttpResponse.json(video);
+      return video === undefined ? notFound() : HttpResponse.json(toMetadataJson(video));
     }),
-    http.put<{ videoId: string }>(`${videosUrl}/:videoId`, async ({ params, request }) => {
+    http.patch<{ videoId: string }>(`${videosUrl}/:videoId`, async ({ params, request }) => {
       const changes = (await request.json()) as VideoDetails;
       const video = videoStore.update(params.videoId, changes);
-      return video === undefined ? notFound() : HttpResponse.json(video);
+      return video === undefined ? notFound() : HttpResponse.json(toMetadataJson(video));
     }),
     http.delete<{ videoId: string }>(`${videosUrl}/:videoId`, ({ params }) => {
       videoStore.remove(params.videoId);
@@ -119,19 +154,20 @@ export function createMetadataHandlers(baseUrl: string) {
 export const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
 };
 
 export function createStreamingHandlers(baseUrl: string) {
   const videosUrl = `${baseUrl}/api/videos`;
   return [
     http.options(videosUrl, () => new HttpResponse(null, { status: 204, headers: CORS_HEADERS })),
-    http.post(videosUrl, () =>
-      HttpResponse.json(
-        { id: UPLOADED_VIDEO_ID, status: 'queued' },
+    http.post(videosUrl, async ({ request }) => {
+      const body = await request.arrayBuffer();
+      return HttpResponse.json(
+        { id: UPLOADED_VIDEO_ID, status: 'queued', size_bytes: body.byteLength },
         { status: 202, headers: CORS_HEADERS },
-      ),
-    ),
+      );
+    }),
     http.get(`${videosUrl}/:videoId`, () => HttpResponse.json({ status: 'ready' })),
     http.delete(`${videosUrl}/:videoId`, () => new HttpResponse(null, { status: 204 })),
   ];

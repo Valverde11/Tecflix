@@ -52,19 +52,10 @@ describe('VideoCard', () => {
     expect(screen.queryByText('Administrar')).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['queued', 'En cola'],
-    ['processing', 'Procesando'],
-    ['failed', 'No se pudo procesar'],
-  ] as const)('avisa el estado %s', (status, label) => {
-    renderCard({ status });
-
-    expect(screen.getByText(label)).toBeInTheDocument();
-  });
-
-  it('no agrega ningún aviso si el video está listo', () => {
-    renderCard({ status: 'ready' });
+  it('no muestra el estado de transcodificación en el catálogo', () => {
+    renderCard();
 
     expect(screen.queryByText('Procesando')).not.toBeInTheDocument();
+    expect(screen.queryByText('En cola')).not.toBeInTheDocument();
   });
 });

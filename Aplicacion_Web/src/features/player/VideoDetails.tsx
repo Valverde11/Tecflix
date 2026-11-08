@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { useServices } from '../../hooks/useServices';
-import type { Video } from '../../types/video';
+import type { Video, VideoStatus } from '../../types/video';
 import { useAuth } from '../auth/useAuth';
 import { formatUploadDate } from '../videos/videoFormat';
 import { VideoOwnerPanel } from '../videos/VideoOwnerPanel';
@@ -12,7 +12,7 @@ const VideoPlayer = lazy(() =>
   import('./VideoPlayer').then(({ VideoPlayer: player }) => ({ default: player })),
 );
 
-const NOT_READY_MESSAGES = {
+const NOT_READY_MESSAGES: Readonly<Record<Exclude<VideoStatus, 'ready'>, string>> = {
   queued: 'Este video está en cola para procesarse. Empezará solo cuando termine.',
   processing: 'Este video se está procesando. Empezará solo cuando termine.',
   failed: 'No se pudo procesar este video.',
@@ -21,15 +21,35 @@ const NOT_READY_MESSAGES = {
 function VideoScreen({ video }: { readonly video: Video }) {
   const { streamingApi } = useServices();
   const { token } = useAuth();
-  const status = useTranscodingStatus(video);
+  const { data: status, isLoading, isError, refetch } = useTranscodingStatus(video.videoId);
+
+  if (isLoading) {
+    return (
+      <p role="status" className={styles.notReady}>
+        Consultando el estado del video…
+      </p>
+    );
+  }
+
+  if (isError && status === undefined) {
+    return (
+      <div role="alert" className={styles.notReady}>
+        <p>No se pudo consultar el estado del video.</p>
+        <button type="button" onClick={() => void refetch()}>
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   if (status !== 'ready') {
     return (
       <p role="status" className={styles.notReady}>
-        {NOT_READY_MESSAGES[status]}
+        {status === undefined ? 'Estado del video no disponible.' : NOT_READY_MESSAGES[status]}
       </p>
     );
   }
+
   return (
     <Suspense fallback={<p className={styles.notReady}>Cargando reproductor…</p>}>
       <VideoPlayer

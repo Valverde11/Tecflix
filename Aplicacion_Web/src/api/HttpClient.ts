@@ -65,6 +65,10 @@ export class HttpClient {
     return this.readJson(await this.send('PUT', path, body), parse);
   }
 
+  async patch<T>(path: string, body: unknown, parse: Parser<T>): Promise<T> {
+    return this.readJson(await this.send('PATCH', path, body), parse);
+  }
+
   async delete(path: string): Promise<void> {
     await this.send('DELETE', path);
   }

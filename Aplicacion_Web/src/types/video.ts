@@ -18,7 +18,6 @@ export interface Video {
   readonly durationSeconds: number;
   readonly sizeBytes: number;
   readonly visibility: Visibility;
-  readonly status: VideoStatus;
   readonly uploadedAt: string;
 }
 

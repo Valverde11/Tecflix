@@ -1,6 +1,6 @@
 # SPEC_INTEGRATION.md — Contrato de integración de Tecflix (borrador V1.0)
 
-**Estado:** borrador técnico para revisión del equipo. No representa todavía una decisión aprobada por los cuatro integrantes.
+**Estado:** borrador técnico para revisión del equipo. La política de cuota de V1.0 (tamaño original medido por streaming) ya fue aprobada por el responsable de integración; las demás decisiones pendientes requieren revisión del equipo.
 
 **Base analizada:** snapshot de `Tecflix.zip` recibido el 8 de noviembre de 2026, rama `V1test`, commit `5b7816a` (`Merge pull request #10 from Valverde11/Aplicación_Web`).
 
@@ -67,6 +67,8 @@ La web obtiene las URL mediante `VITE_USERS_API_URL`, `VITE_METADATA_API_URL` y 
 
 ### 5.1 JWT de usuario
 
+**Decisión aprobada:** extraer la validación JWT a una librería C++ compartida utilizada por `user-service`, `metadata-service` y `streaming-service`. Los tres servicios reciben el mismo `AUTH_SECRET` (secreto aleatorio de al menos 32 bytes), configurado de forma segura por entorno y nunca incluido en el repositorio ni en variables Vite.
+
 El contrato actual del emisor es:
 
 - Encabezado fijo JWT con `alg=HS256` y `typ=JWT`.
@@ -83,7 +85,7 @@ Authorization: Bearer <jwt>
 
 `AUTH_SECRET` debe ser el mismo secreto aleatorio de al menos 32 bytes en `user-service`, `metadata-service` y `streaming-service`. No se expone en Vite ni se sube al repositorio.
 
-**Implementación propuesta:** extraer el código genérico de validación JWT de `Servicios/Servicio_Usuarios` a una librería compartida (`shared/auth` o equivalente), para que las tres APIs validen exactamente el mismo formato. No se recomienda llamar a `user-service` por HTTP en cada petición para validar el token, porque añade dependencia y un punto de fallo.
+La librería compartida verificará firma HS256, `typ`, `alg`, `sub` decimal y `exp`. No se recomienda llamar a `user-service` por HTTP en cada petición para validar el token, porque añade dependencia y un punto de fallo. `user-service` continuará siendo el emisor del token; los otros servicios solo lo validan.
 
 ### 5.2 Token entre servicios
 
@@ -228,13 +230,34 @@ La subida debe llevar:
 ```http
 Content-Type: application/octet-stream
 Authorization: Bearer <jwt>
+Idempotency-Key: <upload_operation_id>
 ```
 
-La respuesta actual es `202 {"id":"<video_id>","status":"queued"}`. **Mejora propuesta:** añadir `size_bytes` calculado por streaming a partir de los bytes realmente recibidos. La web debe usar ese tamaño devuelto por el servidor al crear metadata; no debe confiar en un tamaño enviado únicamente por el navegador.
+La respuesta de éxito será `202 {"id":"<video_id>","status":"queued","size_bytes":<bytes>}`. `size_bytes` se calcula contando los bytes reales del cuerpo HTTP recibidos por streaming. `Content-Length` se puede utilizar para una reserva provisional y para detectar una carga incompleta, pero nunca es la fuente de verdad del tamaño contabilizado. La web debe utilizar exclusivamente `size_bytes` devuelto por streaming al crear metadata.
+
+**Idempotencia de subida:** una misma `Idempotency-Key` representa una única operación lógica. Si la respuesta se pierde y la web reintenta con la misma clave, streaming debe devolver el mismo `video_id` y el mismo resultado, sin crear un segundo archivo, duplicar el trabajo de FFmpeg ni volver a reservar cuota. La clave y el resultado deben persistirse.
 
 Todos los endpoints de streaming deben responder correctamente a CORS para el origen configurado y los métodos `GET`, `POST`, `DELETE`, `OPTIONS`, permitiendo `Authorization` y `Content-Type`.
 
-### 6.4 Errores comunes
+### 6.4 Orden e idempotencia del flujo web
+
+**Subida:** la web coordina `streaming -> metadata`.
+1. La web genera una `Idempotency-Key` para la operación de subida y la conserva durante todos sus reintentos.
+2. La web sube el cuerpo a streaming con JWT, `Content-Type` e `Idempotency-Key`.
+3. Streaming valida al usuario, mide los bytes reales recibidos, gestiona la reserva de cuota e informa `id`, `status` y `size_bytes`.
+4. La web crea metadata con `id`, `size_bytes` medido y los campos editables. Metadata deriva `owner_id` y `owner_name` del JWT. La creación por `id` debe ser idempotente: repetir el mismo payload del mismo propietario devuelve el mismo recurso; reutilizar el ID con propietario o datos incompatibles devuelve conflicto.
+5. Si metadata falla de forma transitoria, la web reintenta la creación con el mismo `id` y payload. Si la creación no puede completarse, la web solicita un DELETE compensatorio autenticado a streaming. Si el DELETE falla por un problema transitorio, conserva el `video_id` y permite reintentar la compensación; no descarta silenciosamente el error.
+
+**Eliminación:** la web coordina `streaming -> metadata`.
+1. La web solicita DELETE a streaming con el JWT del usuario.
+2. Streaming comprueba que el `sub` autenticado coincide con el propietario persistido del upload. No depende de que metadata siga existiendo para autorizar la eliminación.
+3. Streaming elimina el archivo y estado persistidos y libera exactamente una vez la cuota original. Repetir DELETE para el mismo video ya eliminado debe ser seguro y devolver un resultado idempotente (por ejemplo, 204).
+4. Solo después de confirmar la eliminación de streaming, la web elimina metadata. La eliminación de metadata también debe ser idempotente.
+5. Si metadata falla después de eliminar streaming, la web reintenta el DELETE de metadata. Debe mostrar un error recuperable y no presentar la operación como completada hasta que ambos pasos hayan concluido.
+
+Las operaciones de reserva/liberación de cuota en `user-service` también deben aceptar un identificador de operación persistente y deduplicarlo. El endpoint actual basado únicamente en `deltaBytes` no ofrece idempotencia suficiente para reintentos de red.
+
+### 6.5 Errores comunes
 
 Formato objetivo para los tres servicios:
 
@@ -272,28 +295,31 @@ Cambios requeridos en el adaptador:
 - `parseVideo()` debe leer las claves snake_case.
 - `createVideo()` debe enviar `id`, no `videoId`.
 - `updateVideo()` debe usar PATCH, no PUT.
-- `Video.status` no debe ser obligatorio en el modelo devuelto por metadata. El detalle obtiene el estado de `streamingApi`; la tarjeta del catálogo no debe inventar un estado si no lo consulta.
+- `Video.status` no forma parte del modelo ni de las respuestas de metadata. La web consulta `streamingApi.getStatus(videoId)` únicamente en el detalle del video; no hace una consulta por cada tarjeta del catálogo para evitar un patrón N+1.
 - `HttpClient` necesita un método `patch()` o una operación equivalente.
 - MSW debe simular el mismo contrato HTTP real (snake_case, PATCH, paginación real, auth y status por streaming). Los mocks actuales no son evidencia de integración porque imitan el contrato camelCase de la web.
 
-## 8. Cuotas: propuesta de comportamiento V1.0
+## 8. Cuotas: comportamiento acordado para V1.0
 
-**Decisión propuesta que el equipo debe aceptar:** `size_bytes` representa el tamaño del archivo original recibido por streaming. Es la opción que requiere menos cambios porque la web ya lee el tamaño original y metadata ya usa `size_bytes` para el consumo. Streaming debe verificarlo y devolver el tamaño medido; no se debe confiar en el valor del navegador.
+**Decisión aprobada para V1.0:** `size_bytes` representa exclusivamente el tamaño del archivo original recibido por streaming, medido por el propio servicio al contar los bytes del cuerpo HTTP. No representa el tamaño total de los archivos HLS generados por FFmpeg. Streaming es la fuente de verdad de esta medición y devuelve el valor medido; no se debe confiar en el tamaño informado por el navegador. `Content-Length` puede utilizarse como reserva provisional y como comprobación, pero no es la fuente de verdad.
 
-Flujo propuesto:
+Flujo de implementación recomendado:
 1. Streaming valida JWT y extrae `sub` como ID del propietario.
-2. Streaming lee `Content-Length` y solicita reserva positiva a `user-service` usando `X-Service-Token` y `deltaBytes`.
-3. Streaming recibe el cuerpo y comprueba que la cantidad real coincide con `Content-Length`.
-4. Si la recepción o el encolado falla, streaming libera la reserva.
-5. Si la transcodificación termina correctamente, el consumo permanece reservado.
-6. Si falla la transcodificación y se descarta el contenido, streaming libera la reserva.
-7. Al eliminar un video, streaming libera exactamente los bytes registrados para ese video.
-8. Si metadata no puede crear el registro después de aceptar la subida, la web solicita DELETE a streaming para compensar y liberar el consumo.
+2. Streaming utiliza `Content-Length` como tamaño esperado para solicitar una reserva provisional a `user-service`, mediante `X-Service-Token` y `deltaBytes`. Si no se puede obtener un tamaño esperado fiable, la solicitud debe rechazarse en V1.0; no se debe aceptar una carga sin una estrategia de reserva definida.
+3. Streaming recibe el cuerpo y cuenta los bytes realmente recibidos. Ese conteo es el tamaño oficial del archivo original: `size_bytes`.
+4. Streaming verifica que el número de bytes recibidos coincida con `Content-Length`. Si no coincide, la recepción se considera incompleta o inválida, se descarta el archivo parcial y se libera la reserva.
+5. Si la recepción es válida, `size_bytes` medido se utiliza como consumo definitivo y se devuelve en la respuesta de subida para que la web lo envíe al crear metadata. Como en V1.0 se exige que coincida con `Content-Length`, normalmente la reserva provisional ya corresponde al tamaño definitivo; cualquier discrepancia debe tratarse según el paso anterior y no aceptarse silenciosamente.
+6. Si la recepción o el encolado falla, streaming elimina los datos parciales y libera la reserva.
+7. Si la transcodificación termina correctamente, el consumo del archivo original permanece reservado. El tamaño de los segmentos y manifiestos HLS no modifica la cuota de V1.0.
+8. Si falla la transcodificación y se descarta el contenido original, streaming libera la reserva.
+9. Al eliminar un video, streaming libera exactamente los bytes originales registrados para ese video, una sola vez.
+10. Si metadata no puede crear el registro después de aceptar la subida, la web solicita DELETE a streaming para compensar y liberar el consumo.
 
 Requisitos adicionales:
 - Streaming debe guardar de forma persistente `video_id`, `owner_id`, `size_bytes`, `status` y la información necesaria para recuperar el trabajo tras reinicio.
 - El registro local de la reserva debe impedir liberar dos veces el mismo video en el flujo normal.
 - `POST /api/users/:id/quota/usage` es actualmente un delta no idempotente. Para tolerar reintentos después de fallos de red, se recomienda ampliar el contrato con `operation_id` o implementar reservas identificadas por `video_id`. Esto queda pendiente antes de afirmar idempotencia completa.
+- **Alcance de la decisión V1.0:** la cuota mide el tamaño original aceptado por streaming; el espacio adicional ocupado por HLS (manifiestos y segmentos) queda fuera del contador de cuota. Es una simplificación deliberada para V1.0 y debe documentarse para no confundir cuota lógica con uso físico total de disco.
 - El `GET /api/metadata/users/:owner_id/usage` es un resumen del catálogo y no es la autoridad para autorizar ni reservar cuota.
 
 ## 9. Persistencia y recuperación V1.0
@@ -368,14 +394,16 @@ Los archivos `.env.example` deben enumerar las variables requeridas, pero manten
 10. Ejecutar el flujo con MSW desactivado y los servicios reales; no aceptar mocks como evidencia del contrato real.
 11. Confirmar que las métricas y el Dashboard identifican las tres APIs y sus instancias.
 
-## 13. Decisiones pendientes de aprobación del equipo
+## 13. Decisiones aprobadas para V1.0
 
-1. **Cuota:** confirmar que se contabilizará el tamaño del archivo original y no la suma física de segmentos HLS. Esta es la propuesta de este borrador.
-2. **ID de usuario en el API público:** mantener por ahora el `id` numérico actual de user-service y `owner_id` decimal como string en metadata, o migrar todas las respuestas a string. No mezclar formatos de manera implícita.
-3. **Estado en el catálogo:** propuesta: mantener el estado como responsabilidad exclusiva de streaming y obtenerlo desde streaming en detalle; no persistir un `status` duplicado en MongoDB. Para mostrar estado en tarjetas se necesitaría un endpoint batch o una consulta por video; no hacer N solicitudes sin medir el impacto.
-4. **Autenticación compartida:** confirmar extracción de la validación JWT a una librería común y distribución de `AUTH_SECRET` idéntico.
-5. **Eliminación:** confirmar el orden coordinado streaming → metadata en la web, con operaciones idempotentes y reintentos; la autorización de streaming para borrar debe usar el propietario persistido del upload, porque el registro de metadata puede ser eliminado después.
-6. **V2.0:** definir almacenamiento compartido/replicado de archivos y persistencia de la cola/estado de transcodificación antes de desplegar dos instancias.
+1. **Cuota:** se contabiliza el tamaño del archivo original medido por streaming al recibir el cuerpo HTTP. No se contabiliza la suma física de los segmentos HLS. `Content-Length` es una referencia para reserva provisional y comprobación de integridad; no sustituye el conteo de bytes recibidos.
+2. **Identificador de usuario:** se mantiene el `id` numérico JSON actual de `user-service`. Metadata almacena `owner_id` como string decimal. La web lo convierte a `number` solo después de comprobar que es decimal y está dentro del rango seguro de JavaScript.
+3. **Estado:** pertenece exclusivamente a streaming. No se almacena `status` en MongoDB ni se exige en las respuestas de metadata. La web consulta el estado en la página de detalle; no hace una solicitud por cada tarjeta del catálogo.
+4. **Autenticación:** se extrae la validación JWT a una librería C++ común para los tres servicios. Los tres reciben el mismo `AUTH_SECRET`, con al menos 32 bytes, mediante configuración segura.
+5. **Flujo de subida:** la web coordina streaming primero y metadata después. La subida y creación de metadata serán idempotentes y tendrán reintentos seguros. Si metadata no puede crearse definitivamente, la web ejecutará un DELETE compensatorio autenticado a streaming.
+6. **Flujo de eliminación:** la web elimina primero en streaming y después en metadata. Streaming autoriza el DELETE comparando el propietario guardado con el `sub` del JWT; la liberación de cuota y ambos DELETE deben ser idempotentes.
+7. **Identificadores:** `video_id` conserva el formato de 32 caracteres hexadecimales en minúscula; `user_id` permanece numérico en user-service y decimal-string en metadata.
+8. **V2.0:** definir almacenamiento compartido/replicado de archivos y persistencia de la cola/estado de transcodificación antes de desplegar dos instancias.
 
 ---
 
