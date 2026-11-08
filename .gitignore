@@ -6,7 +6,7 @@ vcpkg_installed/
 CMakeUserPresets.json
 
 # Datos de la API de usuarios (archivos binarios generados en ejecución)
-services/user-service/data/
+Servicios/Servicio_Usuarios/data/
 *.dat
 *.idx
 
