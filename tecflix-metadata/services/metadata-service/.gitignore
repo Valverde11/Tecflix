@@ -1,6 +1,0 @@
-# Propio del servicio para no editar el .gitignore compartido (evita conflictos al hacer merge).
-build/
-build-mongo/
-vcpkg_installed/
-cmake-build-*/
-.idea/
