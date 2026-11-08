@@ -84,6 +84,18 @@ describe('UploadPage', () => {
     expect(videoStore.find(UPLOADED_VIDEO_ID)?.visibility).toBe('private');
   });
 
+  it('respeta volver a privado después de elegir público', async () => {
+    await renderUploadPage();
+    await chooseFile();
+    await userEvent.click(screen.getByRole('radio', { name: 'Todos' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Solo yo' }));
+
+    await clickUpload();
+
+    await screen.findByRole('link', { name: 'Volver a los videos' });
+    expect(videoStore.find(UPLOADED_VIDEO_ID)?.visibility).toBe('private');
+  });
+
   it('propone el nombre del archivo como título sin pisar lo escrito', async () => {
     await renderUploadPage();
     await userEvent.type(screen.getByLabelText('Título'), 'Mi título');

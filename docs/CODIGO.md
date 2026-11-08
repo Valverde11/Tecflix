@@ -291,3 +291,15 @@ Borrar pide confirmación en la misma página, nombrando el video y avisando que
 Se recorrió todo en Chrome sin MSW y con red real: API de usuarios real, y un servidor temporal en el papel de metadata y streaming, con CORS y preflight reales, que reportaba la cuota a `user-service` con `X-Service-Token`. 15 comprobaciones: el archivo llegó completo con `Content-Length`, el preflight se respondió, el detalle mostró el procesamiento y arrancó solo al terminar, el video se reprodujo, se editó, cambió de acceso, la cuota real subió 5 MB, se eliminó y la cuota volvió a 0. Ese servidor imita los contratos de `SPEC.md`, así que no sustituye probar contra las APIs reales.
 
 También se comprobó en Chrome el modo `VITE_MOCK_VIDEO_APIS=true`: catálogo simulado, subida y borrado con un usuario real.
+
+## W6 · Cierre
+
+### W6.1 · Pruebas de componentes y hooks clave
+
+Antes de W6.1 la cobertura ya era de 99,5 %. Casi todo se prueba montando la aplicación completa con MSW (`renderApp`): las pruebas recorren pantallas como un usuario y pasan por la red simulada, sin espiar la implementación. Esta tarea agrega lo que faltaba:
+
+- **Hooks reutilizables probados por separado** (`renderHook`): `useForm` lo usan login, registro, subida y edición. Si falla, fallan cuatro pantallas a la vez, y con estas pruebas se sabe enseguida que el problema está en el hook. `useVideoListParams` interpreta la URL, que cualquiera puede editar: las pruebas confirman que una página como `0`, `-2`, `1.5`, `abc` o `1e400`, o un orden desconocido, vuelve al valor por defecto, que cambiar el orden regresa a la página 1 y que la URL de la vista inicial queda limpia.
+- **Hueco de la subida**: volver a "Solo yo" después de elegir "Todos" debe subir el video como privado. Un error ahí publicaría un video que el usuario quería privado.
+- **Mínimo de cobertura en 90 %** (`vite.config.ts`): `SPEC.md` pide 80 % en V1.0, pero el enunciado exige 90 % en la CI de V2.0. Exigirlo desde ya evita acumular código sin pruebas. Si la cobertura baja de 90 %, `npm run coverage` falla.
+
+Las pocas líneas que siguen sin cubrir son defensivas y no se pueden alcanzar desde la interfaz (por ejemplo, `videoRef.current === null` dentro de un efecto, que React solo ejecuta con el `<video>` ya montado). Forzarlas exigiría pruebas que dependen de detalles internos.
