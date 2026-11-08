@@ -4,7 +4,7 @@ Este documento explica en prosa qué hace cada parte del código generado y por 
 
 ---
 
-## API de usuarios (`services/user-service/`)
+## API de usuarios (`Servicios/Servicio_Usuarios/`)
 
 ### U0.1 — Base del proyecto con CMake
 
