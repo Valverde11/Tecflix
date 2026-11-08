@@ -37,6 +37,5 @@ export const testVideo: Video = {
   durationSeconds: 90,
   sizeBytes: 1024,
   visibility: 'public',
-  status: 'ready',
   uploadedAt: '2026-11-03T15:04:05Z',
 };

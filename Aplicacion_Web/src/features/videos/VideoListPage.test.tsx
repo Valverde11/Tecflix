@@ -3,12 +3,23 @@ import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { TEST_API_CONFIG, testSession, testVideo } from '../../test/fixtures';
+import { toMetadataJson } from '../../test/handlers';
 import { renderApp } from '../../test/renderApp';
 import { server } from '../../test/server';
 import { queryCatalog, videoCatalog } from '../../test/videoCatalog';
-import type { SortOrder, VideoSortField } from '../../types/video';
+import type { SortOrder, VideoPage, VideoSortField } from '../../types/video';
 
 const LIST_URL = `${TEST_API_CONFIG.metadataApiUrl}/api/metadata/videos`;
+
+/** Las pruebas simulan la respuesta HTTP de metadata, no el modelo interno de React. */
+function toWirePage(page: VideoPage) {
+  return {
+    items: page.items.map(toMetadataJson),
+    page: page.page,
+    page_size: page.pageSize,
+    total: page.total,
+  };
+}
 
 async function shownTitles() {
   const list = await screen.findByRole('list', { name: 'Lista de videos' });
@@ -22,14 +33,16 @@ describe('VideoListPage', () => {
     server.use(
       http.get(LIST_URL, ({ request }) => {
         requested = new URL(request.url).search;
-        return HttpResponse.json({ items: [testVideo], page: 1, pageSize: 10, total: 1 });
+        return HttpResponse.json(
+          toWirePage({ items: [testVideo], page: 1, pageSize: 10, total: 1 }),
+        );
       }),
     );
     renderApp('/videos', testSession);
 
     await shownTitles();
 
-    expect(requested).toBe('?page=1&pageSize=10&sortBy=uploadedAt&order=desc');
+    expect(requested).toBe('?page=1&page_size=10&sort=uploaded_at&order=desc');
   });
 
   it('respeta el orden de la API y no reordena por su cuenta', async () => {
@@ -39,7 +52,9 @@ describe('VideoListPage', () => {
       videoId: String(index).repeat(32),
     }));
     server.use(
-      http.get(LIST_URL, () => HttpResponse.json({ items, page: 1, pageSize: 10, total: 3 })),
+      http.get(LIST_URL, () =>
+        HttpResponse.json(toWirePage({ items, page: 1, pageSize: 10, total: 3 })),
+      ),
     );
     renderApp('/videos', testSession);
 
@@ -55,7 +70,7 @@ describe('VideoListPage', () => {
       server.use(
         http.get(LIST_URL, async () => {
           await delay('infinite');
-          return HttpResponse.json(emptyPage);
+          return HttpResponse.json(toWirePage(emptyPage));
         }),
       );
       renderApp('/videos', testSession);
@@ -64,7 +79,7 @@ describe('VideoListPage', () => {
     });
 
     it('invita a subir el primer video si no hay ninguno', async () => {
-      server.use(http.get(LIST_URL, () => HttpResponse.json(emptyPage)));
+      server.use(http.get(LIST_URL, () => HttpResponse.json(toWirePage(emptyPage))));
       renderApp('/videos', testSession);
 
       expect(await screen.findByText('Todavía no hay videos.')).toBeInTheDocument();
@@ -79,7 +94,7 @@ describe('VideoListPage', () => {
         http.get(LIST_URL, ({ request }) => {
           const page = Number(new URL(request.url).searchParams.get('page'));
           const items = page === 1 ? [testVideo] : [];
-          return HttpResponse.json({ items, page, pageSize: 10, total: 1 });
+          return HttpResponse.json(toWirePage({ items, page, pageSize: 10, total: 1 }));
         }),
       );
       renderApp('/videos?page=9&sort=title-asc', testSession);
@@ -97,7 +112,7 @@ describe('VideoListPage', () => {
           attempts += 1;
           return attempts === 1
             ? HttpResponse.json({ error: 'internal', message: 'Falló Mongo' }, { status: 503 })
-            : HttpResponse.json({ items: [testVideo], page: 1, pageSize: 10, total: 1 });
+            : HttpResponse.json(toWirePage({ items: [testVideo], page: 1, pageSize: 10, total: 1 }));
         }),
       );
       renderApp('/videos', testSession);
@@ -134,7 +149,7 @@ describe('VideoListPage', () => {
           if (page === 2) {
             await delay('infinite');
           }
-          return HttpResponse.json({ items: [testVideo], page, pageSize: 10, total: 11 });
+          return HttpResponse.json(toWirePage({ items: [testVideo], page, pageSize: 10, total: 11 }));
         }),
       );
       renderApp('/videos', testSession);
@@ -155,14 +170,15 @@ describe('VideoListPage', () => {
           const url = new URL(request.url);
           requests.push(url.search);
           const query = url.searchParams;
-          return HttpResponse.json(
-            queryCatalog(videoCatalog, {
-              page: Number(query.get('page')),
-              pageSize: Number(query.get('pageSize')),
-              sortBy: query.get('sortBy') as VideoSortField,
-              order: query.get('order') as SortOrder,
-            }),
-          );
+          const sort = query.get('sort');
+          const sortBy = (sort === 'uploaded_at' ? 'uploadedAt' : sort) as VideoSortField;
+          const result = queryCatalog(videoCatalog, {
+            page: Number(query.get('page')),
+            pageSize: Number(query.get('page_size')),
+            sortBy,
+            order: query.get('order') as SortOrder,
+          });
+          return HttpResponse.json(toWirePage(result));
         }),
       );
       return requests;
@@ -173,7 +189,7 @@ describe('VideoListPage', () => {
       renderApp('/videos?page=2&sort=title-asc', testSession);
 
       expect(await screen.findByText('Página 2 de 3')).toBeInTheDocument();
-      expect(requests).toEqual(['?page=2&pageSize=10&sortBy=title&order=asc']);
+      expect(requests).toEqual(['?page=2&page_size=10&sort=title&order=asc']);
       expect(screen.getByLabelText('Ordenar por')).toHaveValue('title-asc');
     });
 
@@ -189,7 +205,7 @@ describe('VideoListPage', () => {
 
       await screen.findByText('Página 1 de 3');
 
-      expect(requests).toEqual(['?page=1&pageSize=10&sortBy=uploadedAt&order=desc']);
+      expect(requests).toEqual(['?page=1&page_size=10&sort=uploaded_at&order=desc']);
     });
 
     it('avanza y retrocede pidiendo cada página a la API', async () => {
@@ -226,7 +242,7 @@ describe('VideoListPage', () => {
       await userEvent.click(await screen.findByRole('link', { name: 'Siguiente' }));
 
       await waitFor(() => {
-        expect(requests.at(-1)).toBe('?page=2&pageSize=10&sortBy=author&order=desc');
+        expect(requests.at(-1)).toBe('?page=2&page_size=10&sort=author&order=desc');
       });
     });
 
@@ -238,14 +254,14 @@ describe('VideoListPage', () => {
       await userEvent.selectOptions(screen.getByLabelText('Ordenar por'), 'title-desc');
 
       await waitFor(() => {
-        expect(requests.at(-1)).toBe('?page=1&pageSize=10&sortBy=title&order=desc');
+        expect(requests.at(-1)).toBe('?page=1&page_size=10&sort=title&order=desc');
       });
     });
 
     it('no muestra paginación si todo cabe en una página', async () => {
       server.use(
         http.get(LIST_URL, () =>
-          HttpResponse.json({ items: [testVideo], page: 1, pageSize: 10, total: 1 }),
+          HttpResponse.json(toWirePage({ items: [testVideo], page: 1, pageSize: 10, total: 1 })),
         ),
       );
       renderApp('/videos', testSession);

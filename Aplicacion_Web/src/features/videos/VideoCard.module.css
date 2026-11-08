@@ -52,11 +52,6 @@
   color: var(--color-muted);
 }
 
-.status {
-  font-weight: 700;
-  color: var(--color-ink);
-}
-
 .manage {
   color: var(--color-action);
 }

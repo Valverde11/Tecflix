@@ -28,8 +28,24 @@ const video: Video = {
   durationSeconds: 60,
   sizeBytes: 500,
   visibility: 'public',
-  status: 'ready',
   uploadedAt: '2026-11-03T15:04:05Z',
+};
+
+const metadataVideo = {
+  id: VIDEO_ID,
+  owner_id: '7',
+  owner_name: 'ana',
+  title: 'Árboles B',
+  description: 'Clase',
+  topic: 'Datos',
+  tags: ['btree'],
+  duration_seconds: 60,
+  size_bytes: 500,
+  visibility: 'public',
+  uploaded_at: '2026-11-03T15:04:05Z',
+  updated_at: '2026-11-03T15:04:05Z',
+  genres: [],
+  cast: [],
 };
 
 const details: VideoDetails = {
@@ -111,43 +127,65 @@ describe('UsersApi', () => {
 describe('MetadataApi', () => {
   const api = new MetadataApi(http);
 
-  it('delega el orden y la paginación en la API', async () => {
-    respondWith({ items: [video], page: 2, pageSize: 20, total: 21 });
+  it('traduce la paginación y el orden al contrato snake_case de metadata', async () => {
+    respondWith({ items: [metadataVideo], page: 2, page_size: 20, total: 21 });
 
     const page = await api.listVideos({ page: 2, pageSize: 20, sortBy: 'title', order: 'desc' });
 
     expect(page).toEqual({ items: [video], page: 2, pageSize: 20, total: 21 });
     expect(lastCall().url).toBe(
-      `${BASE_URL}/api/metadata/videos?page=2&pageSize=20&sortBy=title&order=desc`,
+      `${BASE_URL}/api/metadata/videos?page=2&page_size=20&sort=title&order=desc`,
     );
   });
 
-  it('detecta una respuesta en snake_case en vez de aceptarla a medias', async () => {
-    const { uploadedAt, ...rest } = video;
-    respondWith({ ...rest, uploaded_at: uploadedAt });
+  it('traduce uploadedAt al valor uploaded_at esperado por metadata', async () => {
+    respondWith({ items: [metadataVideo], page: 1, page_size: 20, total: 1 });
 
-    await expect(api.getVideo(VIDEO_ID)).rejects.toMatchObject({
-      code: 'invalid_response',
-      message: expect.stringContaining('uploadedAt') as unknown,
-    });
+    await api.listVideos({ page: 1, pageSize: 20, sortBy: 'uploadedAt', order: 'desc' });
+
+    expect(lastCall().url).toBe(
+      `${BASE_URL}/api/metadata/videos?page=1&page_size=20&sort=uploaded_at&order=desc`,
+    );
   });
 
-  it('rechaza un estado que no existe', async () => {
-    respondWith({ ...video, status: 'borrado' });
+  it('convierte la respuesta snake_case al modelo camelCase de la web', async () => {
+    respondWith(metadataVideo);
 
+    await expect(api.getVideo(VIDEO_ID)).resolves.toEqual(video);
+  });
+
+  it('rechaza owner_id que no sea decimal o exceda el entero seguro de JavaScript', async () => {
+    respondWith({ ...metadataVideo, owner_id: '7x' });
+    await expect(api.getVideo(VIDEO_ID)).rejects.toMatchObject({ code: 'invalid_response' });
+
+    respondWith({ ...metadataVideo, owner_id: '9007199254740992' });
     await expect(api.getVideo(VIDEO_ID)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
-  it('crea, edita y borra un video', async () => {
-    respondWith(video, 201);
+  it('crea, edita y borra un video con los métodos y campos del contrato real', async () => {
+    respondWith(metadataVideo, 201);
     await api.createVideo({ ...details, videoId: VIDEO_ID, durationSeconds: 60, sizeBytes: 500 });
-    expect(lastCall()).toMatchObject({ url: `${BASE_URL}/api/metadata/videos`, method: 'POST' });
+    expect(lastCall()).toEqual({
+      url: `${BASE_URL}/api/metadata/videos`,
+      method: 'POST',
+      body: JSON.stringify({
+        id: VIDEO_ID,
+        title: 'Nuevo',
+        description: '',
+        topic: 'Datos',
+        tags: [],
+        duration_seconds: 60,
+        size_bytes: 500,
+        visibility: 'private',
+      }),
+    });
 
-    respondWith(video);
+    respondWith(metadataVideo);
     await api.updateVideo(VIDEO_ID, details);
     expect(lastCall()).toMatchObject({
       url: `${BASE_URL}/api/metadata/videos/${VIDEO_ID}`,
-      method: 'PUT',
+      method: 'PATCH',
+      body: JSON.stringify(details),
     });
 
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
@@ -156,7 +194,7 @@ describe('MetadataApi', () => {
   });
 
   it('escapa el id que viene de la URL', async () => {
-    respondWith(video);
+    respondWith(metadataVideo);
 
     await api.getVideo('../users/1');
 

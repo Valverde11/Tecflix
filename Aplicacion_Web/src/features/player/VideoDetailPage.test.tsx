@@ -18,8 +18,28 @@ vi.mock('./VideoPlayer', () => ({
   ),
 }));
 
-function serveVideo(changes: Partial<Video>) {
-  server.use(http.get(VIDEO_URL, () => HttpResponse.json({ ...testVideo, ...changes })));
+function toMetadataJson(video: Video) {
+  return {
+    id: video.videoId,
+    owner_id: String(video.ownerId),
+    owner_name: video.author,
+    title: video.title,
+    description: video.description,
+    topic: video.topic,
+    tags: video.tags,
+    duration_seconds: video.durationSeconds,
+    size_bytes: video.sizeBytes,
+    visibility: video.visibility,
+    uploaded_at: video.uploadedAt,
+    updated_at: video.uploadedAt,
+    genres: [],
+    cast: [],
+  };
+}
+
+function serveVideo(changes: Partial<Video> = {}) {
+  const video = { ...testVideo, ...changes };
+  server.use(http.get(VIDEO_URL, () => HttpResponse.json(toMetadataJson(video))));
 }
 
 describe('VideoDetailPage', () => {
@@ -77,7 +97,7 @@ describe('VideoDetailPage', () => {
       ['processing', 'se está procesando'],
       ['failed', 'No se pudo procesar'],
     ] as const)('con estado %s no carga el reproductor', async (status, text) => {
-      serveVideo({ status });
+      serveVideo();
       serveStatus(status);
       renderApp(VIDEO_PATH, testSession);
 
@@ -85,43 +105,33 @@ describe('VideoDetailPage', () => {
       expect(screen.queryByText(/^Reproductor/)).not.toBeInTheDocument();
     });
 
-    it('no consulta a streaming si metadata ya dice que está listo', async () => {
+    it('consulta streaming porque es la única fuente de verdad del estado', async () => {
       const calls = serveStatus('ready');
       renderApp(VIDEO_PATH, testSession);
 
       await screen.findByText(/^Reproductor/);
 
-      expect(calls()).toBe(0);
+      expect(calls()).toBe(1);
     });
 
-    it('confía en streaming aunque metadata siga atrasada', async () => {
-      serveVideo({ status: 'queued' });
-      serveStatus('ready');
-      renderApp(VIDEO_PATH, testSession);
-
-      expect(await screen.findByText(/^Reproductor/)).toBeInTheDocument();
-    });
-
-    it('empieza solo cuando termina de procesarse y actualiza la cuota', async () => {
-      serveVideo({ status: 'processing' });
+    it('consulta periódicamente hasta que streaming termina la transcodificación', async () => {
       const calls = serveStatus('processing', 'ready');
-      const services = renderApp(VIDEO_PATH, testSession);
-      const quotaKey = ['quota', testSession.user.id];
-      services.queryClient.setQueryData(quotaKey, { quotaBytes: 1000, usedBytes: 0 });
+      renderApp(VIDEO_PATH, testSession);
 
       expect(await screen.findByText(/se está procesando/)).toBeInTheDocument();
       expect(await screen.findByText(/^Reproductor/)).toBeInTheDocument();
 
       expect(calls()).toBe(2);
-      expect(services.queryClient.getQueryState(quotaKey)?.isInvalidated).toBe(true);
     });
 
-    it('sigue mostrando el estado de metadata si streaming no responde', async () => {
-      serveVideo({ status: 'processing' });
+    it('muestra un error recuperable si streaming no puede informar el estado', async () => {
+      serveVideo();
       server.use(http.get(STATUS_URL, () => HttpResponse.error()));
       renderApp(VIDEO_PATH, testSession);
 
-      expect(await screen.findByText(/se está procesando/)).toBeInTheDocument();
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'No se pudo consultar el estado del video.',
+      );
     });
   });
 
@@ -129,7 +139,7 @@ describe('VideoDetailPage', () => {
     server.use(
       http.get(VIDEO_URL, async () => {
         await delay('infinite');
-        return HttpResponse.json(testVideo);
+        return HttpResponse.json(toMetadataJson(testVideo));
       }),
     );
     renderApp(VIDEO_PATH, testSession);
@@ -153,7 +163,7 @@ describe('VideoDetailPage', () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json({ error: 'x', message: 'Falló Mongo' }, { status: 503 })
-          : HttpResponse.json(testVideo);
+          : HttpResponse.json(toMetadataJson(testVideo));
       }),
     );
     renderApp(VIDEO_PATH, testSession);

@@ -112,7 +112,7 @@ describe('VideoOwnerPanel', () => {
 
     it('explica si no se pudo guardar y conserva lo escrito', async () => {
       server.use(
-        http.put(VIDEO_URL, () =>
+        http.patch(VIDEO_URL, () =>
           HttpResponse.json({ error: 'forbidden', message: 'No es tu video' }, { status: 403 }),
         ),
       );
@@ -164,7 +164,7 @@ describe('VideoOwnerPanel', () => {
 
     it('explica si no se pudo cambiar y no aparenta el cambio', async () => {
       server.use(
-        http.put(VIDEO_URL, () =>
+        http.patch(VIDEO_URL, () =>
           HttpResponse.json({ error: 'x', message: 'Falló Mongo' }, { status: 503 }),
         ),
       );
