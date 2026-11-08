@@ -1,0 +1,78 @@
+/* Fila de guía de programación: duración, contenido y datos de la emisión. */
+.card {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-left: 8px solid;
+}
+
+.duration {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.title a {
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.title a:hover {
+  color: var(--color-action);
+  text-decoration: underline;
+}
+
+.details {
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
+}
+
+.aside {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  color: var(--color-muted);
+}
+
+.status {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.manage {
+  color: var(--color-action);
+}
+
+@media (max-width: 48rem) {
+  .card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+    padding-left: var(--space-3);
+  }
+
+  .duration {
+    font-size: 1.125rem;
+  }
+
+  .aside {
+    flex-wrap: wrap;
+  }
+}

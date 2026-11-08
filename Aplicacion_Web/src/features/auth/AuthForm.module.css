@@ -1,0 +1,40 @@
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.submit {
+  padding: 0.7rem var(--space-3);
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-surface);
+  background: var(--color-action);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--color-action-strong);
+}
+
+.submit:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.formError {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--color-error);
+  border-left: 3px solid var(--color-error);
+}
+
+.switch {
+  margin: var(--space-4) 0 0;
+  color: var(--color-muted);
+}
+
+.switch a {
+  color: var(--color-action);
+}

@@ -1,0 +1,55 @@
+.page {
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.brand {
+  margin-right: auto;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.upload {
+  color: var(--color-action);
+  white-space: nowrap;
+}
+
+/* Un nombre de hasta 32 caracteres no debe empujar las acciones fuera de la pantalla. */
+.username {
+  max-width: 12ch;
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout {
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  color: var(--color-action);
+  white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.logout:hover {
+  text-decoration: underline;
+}
+
+.content {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-4);
+}
