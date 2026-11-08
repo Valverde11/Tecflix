@@ -1,12 +1,12 @@
 # Explicación del código — Aplicación web
 
-Explicación en prosa de cada parte de `frontend/` (qué hace y por qué), como preparación para la defensa.
+Explicación en prosa de cada parte de `Aplicacion_Web/` (qué hace y por qué), como preparación para la defensa.
 
 ## W0 · Base del proyecto
 
 ### W0.1 · Vite + React + TypeScript
 
-`frontend/` se creó con la plantilla `react-ts` de Vite. Vite sirve los módulos directamente al navegador durante el desarrollo y empaqueta con `npm run build`, que primero corre `tsc -b`: si hay un error de tipos, no se genera `dist/`.
+`Aplicacion_Web/` se creó con la plantilla `react-ts` de Vite. Vite sirve los módulos directamente al navegador durante el desarrollo y empaqueta con `npm run build`, que primero corre `tsc -b`: si hay un error de tipos, no se genera `dist/`.
 
 Cambios respecto a la plantilla y su porqué:
 
@@ -306,11 +306,11 @@ Las pocas líneas que siguen sin cubrir son defensivas y no se pueden alcanzar d
 
 ### W6.4 · README de la web
 
-`frontend/README.md` explica cómo instalar, configurar, ejecutar, probar, revisar con lint y compilar la web. También incluye la tabla de variables de entorno y de rutas, la estructura de carpetas y el modo simulado. Aclara dos requisitos que hacen fallar la integración si se olvidan: las tres URLs son obligatorias (la app no arranca si falta una) y cada API debe permitir CORS desde `http://localhost:5173`.
+`Aplicacion_Web/README.md` explica cómo instalar, configurar, ejecutar, probar, revisar con lint y compilar la web. También incluye la tabla de variables de entorno y de rutas, la estructura de carpetas y el modo simulado. Aclara dos requisitos que hacen fallar la integración si se olvidan: las tres URLs son obligatorias (la app no arranca si falta una) y cada API debe permitir CORS desde `http://localhost:5173`.
 
 ### W6.2 · Flujo de Playwright
 
-`frontend/e2e/main-flow.spec.ts` prueba en un navegador real (Chromium) lo que el enunciado pide para V2.0: registro → login → subir → reproducir. Cada parte va en un `test.step`, así el informe dice en cuál falló.
+`Aplicacion_Web/e2e/main-flow.spec.ts` prueba en un navegador real (Chromium) lo que el enunciado pide para V2.0: registro → login → subir → reproducir. Cada parte va en un `test.step`, así el informe dice en cuál falló.
 
 - **Por qué además de Vitest**: las pruebas de Vitest usan jsdom y MSW. No ejecutan CSS, no hacen peticiones reales ni prueban CORS, y no cargan Shaka. Playwright usa la API de usuarios real con su archivo binario y su árbol B, y la red del navegador.
 - **API de usuarios real, metadata y streaming simuladas por ahora**: streaming todavía no responde CORS, así que el navegador no podría subir videos ni reproducirlos. Con `E2E_MOCK_VIDEO_APIS=false` el mismo flujo corre contra las APIs reales y además exige que el `<video>` tenga imagen (`readyState ≥ 2`). Para pasar de unas a otras basta cambiar variables de entorno, sin tocar código.

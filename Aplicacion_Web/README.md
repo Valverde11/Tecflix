@@ -2,12 +2,12 @@
 
 Interfaz de Tecflix hecha con Vite, React 19 y TypeScript en modo estricto. Permite registrarse, iniciar sesión, ver la lista de videos (propios y públicos), reproducirlos con Shaka Player (HLS), subirlos con barra de progreso, editar su metadata, cambiarlos a público o privado y borrarlos. La subida se bloquea al alcanzar la cuota.
 
-La web **no ordena ni pagina** los videos: se los pide así a la API de metadata. Los contratos que consume están en `SPEC.md`, y la explicación del código para la defensa en `docs/CODIGO.md`.
+La web **no ordena ni pagina** los videos: se los pide así a la API de metadata. Los contratos que consume están en `SPEC.md`, y la explicación del código para la defensa en `Documentacion/Codigo_Web.md`.
 
 ## Requisitos
 
 - Node.js 24 (probado con 24.22) y npm.
-- La API de usuarios corriendo (por defecto en `http://localhost:8081`). Instrucciones en `services/user-service/` (rama `API_Usuarios`).
+- La API de usuarios corriendo (por defecto en `http://localhost:8081`). Instrucciones en `Servicios/Servicio_Usuarios/` (rama `API_Usuarios`).
 - Las APIs de metadata y streaming, o el modo simulado (ver abajo).
 
 ## Configuración
@@ -49,7 +49,7 @@ npm run e2e            # flujo de Playwright en Chromium (ver abajo)
 Playwright arranca la web con `vite dev`. La API de usuarios siempre es la real: si ya corre en `E2E_USERS_API_URL`, la reutiliza; si se da `E2E_USERS_SERVICE_COMMAND`, la arranca él mismo con una carpeta de datos temporal y secretos nuevos, sin tocar los datos de desarrollo. En Windows:
 
 ```sh
-E2E_USERS_SERVICE_COMMAND='..\services\user-service\build\user-service.exe' npm run e2e
+E2E_USERS_SERVICE_COMMAND='..\Servicios\Servicio_Usuarios\build\user-service.exe' npm run e2e
 ```
 
 | Variable                                        | Por defecto             | Para qué                                           |
