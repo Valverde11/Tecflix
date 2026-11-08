@@ -9,6 +9,10 @@ option(USER_SERVICE_BUILD_TESTS "Compila las pruebas unitarias" ON)
 
 include(cmake/Dependencies.cmake)
 
+# Librería JWT compartida con metadata y streaming.
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../shared/auth"
+                 "${CMAKE_CURRENT_BINARY_DIR}/shared-auth")
+
 # Opciones de compilación comunes: todo warning se trata como error (SPEC 6.2).
 add_library(user_service_warnings INTERFACE)
 if(MSVC)
@@ -44,7 +48,7 @@ add_library(user_service_core
 )
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core
-    PUBLIC httplib::httplib nlohmann_json::nlohmann_json
+    PUBLIC httplib::httplib nlohmann_json::nlohmann_json tecflix_auth
     PRIVATE mbedcrypto user_service_warnings
 )
 
