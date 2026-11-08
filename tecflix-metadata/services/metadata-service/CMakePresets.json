@@ -1,0 +1,37 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Ninja (Debug, repositorio en memoria)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "METADATA_ENABLE_MONGO": "OFF"
+      }
+    },
+    {
+      "name": "mongo",
+      "displayName": "Ninja (Debug, MongoDB con vcpkg)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mongo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "METADATA_ENABLE_MONGO": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default", "configurePreset": "default" },
+    { "name": "mongo", "configurePreset": "mongo" }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
