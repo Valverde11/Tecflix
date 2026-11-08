@@ -303,3 +303,7 @@ Antes de W6.1 la cobertura ya era de 99,5 %. Casi todo se prueba montando la apl
 - **Mínimo de cobertura en 90 %** (`vite.config.ts`): `SPEC.md` pide 80 % en V1.0, pero el enunciado exige 90 % en la CI de V2.0. Exigirlo desde ya evita acumular código sin pruebas. Si la cobertura baja de 90 %, `npm run coverage` falla.
 
 Las pocas líneas que siguen sin cubrir son defensivas y no se pueden alcanzar desde la interfaz (por ejemplo, `videoRef.current === null` dentro de un efecto, que React solo ejecuta con el `<video>` ya montado). Forzarlas exigiría pruebas que dependen de detalles internos.
+
+### W6.4 · README de la web
+
+`frontend/README.md` explica cómo instalar, configurar, ejecutar, probar, revisar con lint y compilar la web. También incluye la tabla de variables de entorno y de rutas, la estructura de carpetas y el modo simulado. Aclara dos requisitos que hacen fallar la integración si se olvidan: las tres URLs son obligatorias (la app no arranca si falta una) y cada API debe permitir CORS desde `http://localhost:5173`.
