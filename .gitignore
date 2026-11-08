@@ -64,6 +64,10 @@ blob-report/
 # ==========================================
 build/
 cmake-build-*/
+out/
+.vs/
+vcpkg_installed/
+CMakeUserPresets.json
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -100,7 +104,10 @@ Testing/
 # ==========================================
 # 8. API de usuarios: datos de ejecución
 # ==========================================
-/services/user-service/data/
+/Servicios/Servicio_Usuarios/data/
+# Archivo binario de usuarios e índices del árbol B: nunca se versionan.
+*.dat
+*.idx
 
 # ==========================================
 # 9. API de streaming: archivos generados
