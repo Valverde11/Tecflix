@@ -39,7 +39,28 @@ npm run lint           # ESLint sin advertencias permitidas
 npm run format:check   # Prettier (npm run format corrige)
 npm run build          # verifica tipos y genera dist/
 npm run preview        # sirve dist/ para revisarlo
+npm run e2e            # flujo de Playwright en Chromium (ver abajo)
 ```
+
+## Prueba de punta a punta (Playwright)
+
+`e2e/main-flow.spec.ts` recorre registro → login → subir → reproducir en Chromium real. La primera vez hay que descargar el navegador con `npx playwright install chromium`.
+
+Playwright arranca la web con `vite dev`. La API de usuarios siempre es la real: si ya corre en `E2E_USERS_API_URL`, la reutiliza; si se da `E2E_USERS_SERVICE_COMMAND`, la arranca él mismo con una carpeta de datos temporal y secretos nuevos, sin tocar los datos de desarrollo. En Windows:
+
+```sh
+E2E_USERS_SERVICE_COMMAND='..\services\user-service\build\user-service.exe' npm run e2e
+```
+
+| Variable                                        | Por defecto             | Para qué                                           |
+| ----------------------------------------------- | ----------------------- | -------------------------------------------------- |
+| `E2E_USERS_SERVICE_COMMAND`                     | —                       | Comando que arranca la API de usuarios             |
+| `E2E_USERS_API_URL`                             | `http://localhost:8081` | Dónde está (o se arranca) la API de usuarios       |
+| `E2E_MOCK_VIDEO_APIS`                           | `true`                  | `false` usa metadata y streaming reales            |
+| `E2E_METADATA_API_URL`, `E2E_STREAMING_API_URL` | `:8082`, `:8083`        | URLs reales de esas APIs                           |
+| `E2E_VIDEO_FILE`                                | —                       | Video real a subir (necesario con las APIs reales) |
+
+Con los simuladores, el último paso solo comprueba que se abre el reproductor, porque no hay HLS real. Con `E2E_MOCK_VIDEO_APIS=false`, además exige que el video cargue imagen sin errores. Si la API de usuarios es un build Debug, el registro y el login tardan varios segundos por el hash; Release es mucho más rápido.
 
 ## Rutas
 

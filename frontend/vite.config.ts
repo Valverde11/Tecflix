@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { msw } from 'msw/vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // El enunciado exige 90 % en la CI de V2.0; se exige desde ya para no acumular deuda (SPEC 6.4 pide 80 en V1.0).
 const MIN_COVERAGE_PERCENT = 90;
@@ -16,6 +16,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Los flujos de Playwright corren en un navegador real con `npm run e2e`, no en Vitest.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     testTimeout: TEST_TIMEOUT_MS,
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
