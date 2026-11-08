@@ -156,3 +156,7 @@ load-tests/reports/
 # 12. Configuración local de herramientas
 # ==========================================
 *.local
+
+# Resultados de Playwright
+test-results/
+playwright-report/

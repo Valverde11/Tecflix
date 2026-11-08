@@ -307,3 +307,15 @@ Las pocas líneas que siguen sin cubrir son defensivas y no se pueden alcanzar d
 ### W6.4 · README de la web
 
 `frontend/README.md` explica cómo instalar, configurar, ejecutar, probar, revisar con lint y compilar la web. También incluye la tabla de variables de entorno y de rutas, la estructura de carpetas y el modo simulado. Aclara dos requisitos que hacen fallar la integración si se olvidan: las tres URLs son obligatorias (la app no arranca si falta una) y cada API debe permitir CORS desde `http://localhost:5173`.
+
+### W6.2 · Flujo de Playwright
+
+`frontend/e2e/main-flow.spec.ts` prueba en un navegador real (Chromium) lo que el enunciado pide para V2.0: registro → login → subir → reproducir. Cada parte va en un `test.step`, así el informe dice en cuál falló.
+
+- **Por qué además de Vitest**: las pruebas de Vitest usan jsdom y MSW. No ejecutan CSS, no hacen peticiones reales ni prueban CORS, y no cargan Shaka. Playwright usa la API de usuarios real con su archivo binario y su árbol B, y la red del navegador.
+- **API de usuarios real, metadata y streaming simuladas por ahora**: streaming todavía no responde CORS, así que el navegador no podría subir videos ni reproducirlos. Con `E2E_MOCK_VIDEO_APIS=false` el mismo flujo corre contra las APIs reales y además exige que el `<video>` tenga imagen (`readyState ≥ 2`). Para pasar de unas a otras basta cambiar variables de entorno, sin tocar código.
+- **`playwright.config.ts`** arranca la web y, si se le da `E2E_USERS_SERVICE_COMMAND`, también la API de usuarios. Cada corrida usa una carpeta temporal en `DATA_DIR` y secretos generados con `randomBytes`, así no hay secretos en el repo ni datos de corridas anteriores. Las variables del proceso mandan sobre `.env`, así la prueba no depende de la configuración local. El nombre de usuario lleva la hora en base 36 porque la API no permite repetirlo.
+- **Tiempos de espera amplios en registro y login**: cada hash PBKDF2 de 600 000 iteraciones tardó ~12 s en el build Debug de esta máquina. El tiempo es intencional: hace caro adivinar contraseñas. Por eso la espera es mayor en esos pasos y no en los demás.
+- **Archivos aparte**: `tsconfig.e2e.json` agrega los tipos del DOM, porque `page.evaluate` ejecuta código en el navegador. Vitest excluye `e2e/**` para no intentar correr esas pruebas en jsdom. Los resultados (`test-results/`, `playwright-report/`) no se versionan.
+
+Verificado: el flujo pasa en 43 s con `user-service.exe` (Debug) arrancado por Playwright.
