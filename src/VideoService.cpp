@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <random>
 #include <system_error>
 #include <utility>
@@ -45,9 +46,11 @@ std::string make_video_id() {
 
 VideoService::VideoService(std::filesystem::path storage_directory,
                            std::size_t worker_count,
-                           FfmpegTranscoder transcoder)
+                           FfmpegTranscoder transcoder,
+                           const tecflix::auth::JwtValidator& validator)
     : storage_directory_(std::move(storage_directory)),
-      transcoder_(std::move(transcoder)) {
+      transcoder_(std::move(transcoder)),
+      validator_(validator) {
     std::filesystem::create_directories(storage_directory_);
     workers_.reserve(worker_count);
     for (std::size_t i = 0; i < worker_count; ++i) {
@@ -77,7 +80,9 @@ void VideoService::register_routes(httplib::Server& server) {
 
     server.Get(R"(/api/videos/([a-f0-9]{32}))",
                [this](const httplib::Request& request, httplib::Response& response) {
-        const auto status = find_status(request.matches[1].str());
+        const auto id = request.matches[1].str();
+        if (!authorize_video(request, response, id)) return;
+        const auto status = find_status(id);
         if (!status) return error(response, 404, "video_not_found");
         response.set_content(std::string("{\"status\":\"") + status_name(*status) + "\"}",
                              "application/json");
@@ -86,6 +91,7 @@ void VideoService::register_routes(httplib::Server& server) {
     server.Get(R"(/api/videos/([a-f0-9]{32})/index\.m3u8)",
                [this](const httplib::Request& request, httplib::Response& response) {
         const auto video_id = request.matches[1].str();
+        if (!authorize_video(request, response, video_id)) return;
         const auto status = find_status(video_id);
         if (!status) return error(response, 404, "video_not_found");
         if (*status != JobStatus::ready) return error(response, 409, "video_not_ready");
@@ -101,11 +107,49 @@ void VideoService::register_routes(httplib::Server& server) {
     server.Get(R"(/api/videos/([a-f0-9]{32})/segments/(segment_[0-9]{5}\.ts))",
                [this](const httplib::Request& request, httplib::Response& response) {
         const auto video_id = request.matches[1].str();
+        if (!authorize_video(request, response, video_id)) return;
         const auto status = find_status(video_id);
         if (!status) return error(response, 404, "video_not_found");
         if (*status != JobStatus::ready) return error(response, 409, "video_not_ready");
         stream_segment(storage_directory_ / video_id / request.matches[2].str(), response);
     });
+}
+
+
+std::optional<tecflix::auth::JwtClaims> VideoService::authenticate(
+    const httplib::Request& request, httplib::Response& response) const {
+    if (request.get_header_value_count("Authorization") != 1) {
+        error(response, 401, "invalid_token");
+        return std::nullopt;
+    }
+    const auto header = request.get_header_value("Authorization");
+    constexpr std::string_view prefix = "Bearer ";
+    if (header.size() <= prefix.size() ||
+        header.compare(0, prefix.size(), prefix) != 0) {
+        error(response, 401, "invalid_token");
+        return std::nullopt;
+    }
+    const auto claims = validator_.Validate(header.substr(prefix.size()));
+    if (!claims) error(response, 401, "invalid_token");
+    return claims;
+}
+
+bool VideoService::authorize_video(const httplib::Request& request,
+                                   httplib::Response& response,
+                                   const std::string& video_id) const {
+    const auto claims = authenticate(request, response);
+    if (!claims) return false;
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    const auto owner = owners_.find(video_id);
+    if (owner == owners_.end()) {
+        error(response, 404, "video_not_found");
+        return false;
+    }
+    if (owner->second != claims->user_id) {
+        error(response, 403, "forbidden");
+        return false;
+    }
+    return true;
 }
 
 void VideoService::error(httplib::Response& response, int code, const char* message) {
@@ -137,6 +181,8 @@ bool VideoService::enqueue(const std::string& video_id) {
 void VideoService::upload(const httplib::Request& request,
                           httplib::Response& response,
                           const httplib::ContentReader& read_body) {
+    const auto claims = authenticate(request, response);
+    if (!claims) return;
     if (!request.has_header("Content-Length")) {
         return error(response, 411, "content_length_required");
     }
@@ -186,11 +232,13 @@ void VideoService::upload(const httplib::Request& request,
     {
         std::lock_guard<std::mutex> lock(status_mutex_);
         statuses_[video_id] = JobStatus::queued;
+        owners_[video_id] = claims->user_id;
     }
     if (!enqueue(video_id)) {
         {
             std::lock_guard<std::mutex> lock(status_mutex_);
             statuses_.erase(video_id);
+            owners_.erase(video_id);
         }
         std::error_code filesystem_error;
         std::filesystem::remove_all(job_directory, filesystem_error);

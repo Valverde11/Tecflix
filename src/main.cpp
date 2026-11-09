@@ -44,9 +44,15 @@ int main() {
     const auto worker_count =
         std::clamp<unsigned>(std::thread::hardware_concurrency(), 1, 4);
 
+    const auto secret = environment_variable("AUTH_SECRET", "");
+    if (secret.size() < tecflix::auth::JwtValidator::kMinSecretSize) {
+        std::cerr << "AUTH_SECRET debe tener al menos 32 bytes\n";
+        return 1;
+    }
+    const tecflix::auth::JwtValidator validator(secret);
     tecflix::FfmpegTranscoder transcoder(ffmpeg_executable);
     tecflix::VideoService videos(storage, worker_count,
-                                 std::move(transcoder));
+                                 std::move(transcoder), validator);
 
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);
