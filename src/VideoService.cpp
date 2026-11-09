@@ -50,8 +50,21 @@ VideoService::VideoService(std::filesystem::path storage_directory,
                            const tecflix::auth::JwtValidator& validator)
     : storage_directory_(std::move(storage_directory)),
       transcoder_(std::move(transcoder)),
+      record_store_(storage_directory_),
       validator_(validator) {
-    std::filesystem::create_directories(storage_directory_);
+    // Existing records are loaded before workers start. Interrupted jobs are
+    // marked failed; an explicit recovery/reenqueue policy will be added later.
+    for (auto record : record_store_.LoadAll()) {
+        if (record.status == "queued" || record.status == "processing" ||
+            (record.status == "ready" && !std::filesystem::exists(
+                storage_directory_ / record.video_id / "index.m3u8"))) {
+            record.status = "failed";
+            record_store_.Save(record);
+        }
+        owners_[record.video_id] = record.owner_id;
+        statuses_[record.video_id] = record.status == "ready" ? JobStatus::ready : JobStatus::failed;
+        records_.emplace(record.video_id, std::move(record));
+    }
     workers_.reserve(worker_count);
     for (std::size_t i = 0; i < worker_count; ++i) {
         workers_.emplace_back([this] { worker_loop(); });
@@ -167,7 +180,18 @@ std::optional<JobStatus> VideoService::find_status(const std::string& video_id) 
 
 void VideoService::set_status(const std::string& video_id, JobStatus status) {
     std::lock_guard<std::mutex> lock(status_mutex_);
-    statuses_[video_id] = status;
+    const auto found = records_.find(video_id);
+    if (found == records_.end()) return;
+    auto updated = found->second;
+    updated.status = status_name(status);
+    try {
+        record_store_.Save(updated);
+        found->second = std::move(updated);
+        statuses_[video_id] = status;
+    } catch (const std::exception&) {
+        // Fail closed: never expose HLS when the persistent status is uncertain.
+        statuses_[video_id] = JobStatus::failed;
+    }
 }
 
 bool VideoService::enqueue(const std::string& video_id) {
@@ -229,8 +253,18 @@ void VideoService::upload(const httplib::Request& request,
         return error(response, 400, "incomplete_upload");
     }
 
+    UploadRecord record{video_id, claims->user_id, received, "queued",
+                        "video-" + video_id + ":reserve", "not_requested"};
+    try {
+        record_store_.Save(record);
+    } catch (const std::exception&) {
+        std::error_code ignored;
+        std::filesystem::remove_all(job_directory, ignored);
+        return error(response, 500, "could_not_persist_upload");
+    }
     {
         std::lock_guard<std::mutex> lock(status_mutex_);
+        records_[video_id] = record;
         statuses_[video_id] = JobStatus::queued;
         owners_[video_id] = claims->user_id;
     }
@@ -239,6 +273,7 @@ void VideoService::upload(const httplib::Request& request,
             std::lock_guard<std::mutex> lock(status_mutex_);
             statuses_.erase(video_id);
             owners_.erase(video_id);
+            records_.erase(video_id);
         }
         std::error_code filesystem_error;
         std::filesystem::remove_all(job_directory, filesystem_error);

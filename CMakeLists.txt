@@ -39,6 +39,7 @@ add_executable(tecflix-api
     src/VideoService.cpp
     src/FfmpegTranscoder.cpp
     src/QuotaClient.cpp
+    src/UploadRecordStore.cpp
 )
 target_include_directories(tecflix-api PRIVATE include)
 target_compile_features(tecflix-api PRIVATE cxx_std_17)
@@ -56,6 +57,7 @@ if(BUILD_TESTING AND NOT WIN32)
         tests/streaming_auth_tests.cpp
         src/VideoService.cpp
         src/FfmpegTranscoder.cpp
+        src/UploadRecordStore.cpp
     )
     target_include_directories(streaming-auth-tests PRIVATE include)
     target_compile_features(streaming-auth-tests PRIVATE cxx_std_17)
@@ -75,4 +77,16 @@ if(BUILD_TESTING AND NOT WIN32)
     target_link_libraries(quota-client-tests PRIVATE
         httplib::httplib Threads::Threads nlohmann_json::nlohmann_json)
     add_test(NAME QuotaClientHttp COMMAND quota-client-tests)
+endif()
+
+# Persistent upload record tests (no MongoDB and no real FFmpeg required).
+if(BUILD_TESTING AND NOT WIN32)
+    add_executable(upload-record-store-tests
+        tests/upload_record_store_tests.cpp
+        src/UploadRecordStore.cpp
+    )
+    target_include_directories(upload-record-store-tests PRIVATE include)
+    target_compile_features(upload-record-store-tests PRIVATE cxx_std_17)
+    target_link_libraries(upload-record-store-tests PRIVATE nlohmann_json::nlohmann_json)
+    add_test(NAME UploadRecordStore COMMAND upload-record-store-tests)
 endif()

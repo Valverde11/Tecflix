@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tecflix/FfmpegTranscoder.h"
+#include "tecflix/UploadRecordStore.h"
 #include <tecflix/auth/jwt_validator.hpp>
 
 #include <httplib.h>
@@ -53,6 +54,8 @@ private:
 
     std::filesystem::path storage_directory_;
     FfmpegTranscoder transcoder_;
+    UploadRecordStore record_store_;
+    std::unordered_map<std::string, UploadRecord> records_;
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;
     std::unordered_map<std::string, JobStatus> statuses_;
