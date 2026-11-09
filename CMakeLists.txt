@@ -48,3 +48,17 @@ if(MSVC)
 else()
     target_compile_options(tecflix-api PRIVATE -Wall -Wextra -Wpedantic -O2)
 endif()
+# Pruebas HTTP de autenticación/autorización, independientes de FFmpeg real.
+include(CTest)
+if(BUILD_TESTING AND NOT WIN32)
+    add_executable(streaming-auth-tests
+        tests/streaming_auth_tests.cpp
+        src/VideoService.cpp
+        src/FfmpegTranscoder.cpp
+    )
+    target_include_directories(streaming-auth-tests PRIVATE include)
+    target_compile_features(streaming-auth-tests PRIVATE cxx_std_17)
+    target_link_libraries(streaming-auth-tests PRIVATE
+        httplib::httplib Threads::Threads tecflix_auth)
+    add_test(NAME StreamingAuthHttp COMMAND streaming-auth-tests)
+endif()

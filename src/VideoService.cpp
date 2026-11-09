@@ -246,8 +246,9 @@ void VideoService::upload(const httplib::Request& request,
     }
 
     response.status = 202;
-    response.set_content(std::string("{\"id\":\"") + video_id + "\",\"status\":\"queued\"}",
-                         "application/json");
+    response.set_content(std::string("{\"id\":\"") + video_id +
+                         "\",\"status\":\"queued\",\"size_bytes\":" +
+                         std::to_string(received) + "}", "application/json");
 }
 
 void VideoService::stream_segment(const std::filesystem::path& path,
