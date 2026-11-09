@@ -15,6 +15,8 @@ enum class UserErrorCode {
   kInvalidCredentials,
   kQuotaExceeded,
   kReleaseExceedsUsage,
+  kInvalidQuotaOperation,
+  kQuotaOperationConflict,
 };
 
 // Error causado por la petición, no por el servidor. Lleva un código estable

@@ -563,3 +563,33 @@ TEST_F(QuotaUsageTest, ReportsUnknownUser) {
 
 }  // namespace
 }  // namespace tecflix::users
+
+namespace tecflix::users {
+namespace {
+TEST_F(UserControllerTest, QuotaOperationIdIsIdempotentOverHttp) {
+  const auto user = PostJson(UserController::kUsersRoute, Credentials("ana"));
+  ASSERT_TRUE(user);
+  ASSERT_EQ(user->status, 201);
+  const auto id = nlohmann::json::parse(user->body).at("id").get<std::uint64_t>();
+  const auto route = "/api/users/" + std::to_string(id) + "/quota/usage";
+  const nlohmann::json body = {{"operationId", "upload-001"}, {"deltaBytes", 500}};
+  auto post = [&](const nlohmann::json& payload) {
+    return Client().Post(route,
+                         httplib::Headers{{"X-Service-Token", kServiceSecret}},
+                         payload.dump(), kJson);
+  };
+  auto first = post(body);
+  ASSERT_TRUE(first);
+  EXPECT_EQ(first->status, 200);
+  auto retry = post(body);
+  ASSERT_TRUE(retry);
+  EXPECT_EQ(retry->status, 200);
+  EXPECT_EQ(nlohmann::json::parse(retry->body).at("usedBytes"), 500);
+  auto conflict = post({{"operationId", "upload-001"}, {"deltaBytes", 600}});
+  ASSERT_TRUE(conflict);
+  EXPECT_EQ(conflict->status, 409);
+  EXPECT_EQ(nlohmann::json::parse(conflict->body).at("error"),
+            "quota_operation_conflict");
+}
+}  // namespace
+}  // namespace tecflix::users

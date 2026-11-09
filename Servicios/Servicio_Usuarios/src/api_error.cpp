@@ -36,6 +36,10 @@ ErrorMapping MappingOf(UserErrorCode code) {
       return {StatusCode::PayloadTooLarge_413, "quota_exceeded"};
     case UserErrorCode::kReleaseExceedsUsage:
       return {StatusCode::Conflict_409, "release_exceeds_usage"};
+    case UserErrorCode::kInvalidQuotaOperation:
+      return {StatusCode::BadRequest_400, "invalid_quota_operation"};
+    case UserErrorCode::kQuotaOperationConflict:
+      return {StatusCode::Conflict_409, "quota_operation_conflict"};
   }
   throw std::logic_error("UserErrorCode sin traducción a HTTP");
 }

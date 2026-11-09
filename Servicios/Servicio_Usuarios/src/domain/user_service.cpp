@@ -1,6 +1,8 @@
 #include "tecflix/users/domain/user_service.hpp"
 
 #include <chrono>
+#include <limits>
+#include <stdexcept>
 #include <utility>
 
 #include "tecflix/users/domain/user_error.hpp"
@@ -84,10 +86,14 @@ std::int64_t UserService::SystemClock() {
 }
 
 UserService::UserService(UserRepository& repository, PasswordHasher hasher,
-                         Clock clock)
+                         Clock clock, QuotaOperationJournal* journal)
     : repository_(repository),
+      journal_(journal),
       hasher_(std::move(hasher)),
-      clock_(std::move(clock)) {}
+      clock_(std::move(clock)) {
+  // La recuperación termina antes de admitir tráfico HTTP.
+  if (journal_) RecoverPendingQuotaOperations();
+}
 
 UserProfile UserService::Register(const Registration& registration) {
   RequireValidUsername(registration.username);
@@ -186,10 +192,80 @@ QuotaUsage UserService::GetQuota(std::uint64_t id) {
   return ToQuotaUsage(LoadUser(id));
 }
 
+void UserService::RecoverPendingQuotaOperations() {
+  if (!journal_) return;
+  for (const auto& [operation_id, operation] : journal_->Operations()) {
+    if (operation.committed) continue;
+    UserRecord record = LoadUser(operation.user_id);
+    if (record.used_bytes == operation.before_bytes) {
+      record.used_bytes = operation.after_bytes;
+      RequireSuccess(repository_.Update(record));
+    } else if (record.used_bytes != operation.after_bytes) {
+      // No es seguro adivinar si otro cambio intervino tras PREPARE.
+      throw std::runtime_error(
+          "Cuota inconsistente al recuperar operación " + operation_id);
+    }
+    journal_->Commit(operation_id);
+  }
+}
+
+QuotaUsage UserService::ApplyQuotaOperation(
+    std::uint64_t id, const std::string& operation_id,
+    std::int64_t delta_bytes) {
+  if (!journal_) {
+    throw std::logic_error("El diario persistente de cuotas no está configurado");
+  }
+  if (delta_bytes == 0) {
+    throw UserError(UserErrorCode::kInvalidQuotaOperation,
+                    "deltaBytes no puede ser cero");
+  }
+  const std::lock_guard lock(repository_mutex_);
+  RecoverPendingQuotaOperations();
+
+  if (const auto previous = journal_->Find(operation_id)) {
+    if (previous->user_id != id || previous->delta_bytes != delta_bytes) {
+      throw UserError(UserErrorCode::kQuotaOperationConflict,
+                      "operationId ya fue usado para otros datos");
+    }
+    return ToQuotaUsage(LoadUser(id));
+  }
+
+  UserRecord record = LoadUser(id);
+  const std::uint64_t before = record.used_bytes;
+  if (delta_bytes > 0) {
+    const auto bytes = static_cast<std::uint64_t>(delta_bytes);
+    if (before > record.quota_bytes || bytes > record.quota_bytes - before) {
+      throw UserError(UserErrorCode::kQuotaExceeded,
+                      "El usuario no tiene espacio suficiente en su cuota");
+    }
+    record.used_bytes += bytes;
+  } else {
+    // Evita desbordamiento al negar el mínimo representable de int64_t.
+    const auto bytes = std::uint64_t{0} - static_cast<std::uint64_t>(delta_bytes);
+    if (bytes > before) {
+      throw UserError(UserErrorCode::kReleaseExceedsUsage,
+                      "No se puede liberar más espacio del que está en uso");
+    }
+    record.used_bytes -= bytes;
+  }
+  // WAL: primero registrar PREPARE durable, luego escribir users.dat, luego
+  // COMMIT. Si hay una caída, el constructor recupera el cambio pendiente.
+  try {
+    journal_->Prepare({operation_id, id, delta_bytes, before,
+                       record.used_bytes, false});
+  } catch (const std::invalid_argument& error) {
+    throw UserError(UserErrorCode::kInvalidQuotaOperation, error.what());
+  }
+  RequireSuccess(repository_.Update(record));
+  journal_->Commit(operation_id);
+  return ToQuotaUsage(record);
+}
+
 QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
   // Leer, validar y escribir van bajo el mismo candado: si otra subida entrara
   // entre medio, las dos pasarían la validación y una suma se perdería.
   const std::lock_guard lock(repository_mutex_);
+  RecoverPendingQuotaOperations();
   UserRecord record = LoadUser(id);
   // Se compara contra lo disponible y no se suma used + bytes: bytes viene de
   // afuera y una suma cercana al máximo de uint64 daría la vuelta y pasaría.
@@ -204,6 +280,7 @@ QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
 
 QuotaUsage UserService::ReleaseSpace(std::uint64_t id, std::uint64_t bytes) {
   const std::lock_guard lock(repository_mutex_);
+  RecoverPendingQuotaOperations();
   UserRecord record = LoadUser(id);
   if (bytes > record.used_bytes) {
     throw UserError(UserErrorCode::kReleaseExceedsUsage,

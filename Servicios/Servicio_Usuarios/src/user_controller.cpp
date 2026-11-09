@@ -6,6 +6,7 @@
 #include <cstring>
 #include <ctime>
 #include <iomanip>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
@@ -254,6 +255,26 @@ void UserController::ChangeQuotaUsage(const httplib::Request& request,
   const std::uint64_t id = PathUserId(request);
   const json body = ParseObject(request.body);
   const json& delta = RequiredDelta(body);
+  const auto operation_id = body.find("operationId");
+  if (operation_id != body.end()) {
+    if (!operation_id->is_string()) {
+      ThrowInvalidRequest("'operationId' debe ser texto");
+    }
+    // El diario almacena un delta firmado en int64_t; evitar el cast implícito
+    // de valores JSON unsigned que no caben en ese tipo.
+    if (delta.is_number_unsigned() &&
+        delta.get<std::uint64_t>() >
+            static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      ThrowInvalidRequest("'deltaBytes' excede el rango de int64");
+    }
+    const auto value = delta.get<std::int64_t>();
+    const QuotaUsage usage = users_.ApplyQuotaOperation(
+        id, operation_id->get<std::string>(), value);
+    WriteJson(response, httplib::StatusCode::OK_200, ToJson(usage));
+    return;
+  }
+  // Contrato legado temporal: se mantendrá hasta migrar streaming, pero no
+  // admite reintentos idempotentes; los nuevos clientes deben usar operationId.
   const QuotaUsage usage =
       delta.is_number_unsigned()
           ? users_.ReserveSpace(id, delta.get<std::uint64_t>())
