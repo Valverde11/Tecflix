@@ -38,6 +38,7 @@ add_executable(tecflix-api
     src/main.cpp
     src/VideoService.cpp
     src/FfmpegTranscoder.cpp
+    src/QuotaClient.cpp
 )
 target_include_directories(tecflix-api PRIVATE include)
 target_compile_features(tecflix-api PRIVATE cxx_std_17)
@@ -61,4 +62,17 @@ if(BUILD_TESTING AND NOT WIN32)
     target_link_libraries(streaming-auth-tests PRIVATE
         httplib::httplib Threads::Threads tecflix_auth)
     add_test(NAME StreamingAuthHttp COMMAND streaming-auth-tests)
+endif()
+
+# Pruebas del cliente de cuota sin conexión al servicio real de usuarios.
+if(BUILD_TESTING AND NOT WIN32)
+    add_executable(quota-client-tests
+        tests/quota_client_tests.cpp
+        src/QuotaClient.cpp
+    )
+    target_include_directories(quota-client-tests PRIVATE include)
+    target_compile_features(quota-client-tests PRIVATE cxx_std_17)
+    target_link_libraries(quota-client-tests PRIVATE
+        httplib::httplib Threads::Threads nlohmann_json::nlohmann_json)
+    add_test(NAME QuotaClientHttp COMMAND quota-client-tests)
 endif()
