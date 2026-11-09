@@ -40,6 +40,7 @@ add_library(user_service_core
     src/security/password_hasher.cpp
     src/security/service_token_verifier.cpp
     src/storage/binary_file.cpp
+    src/storage/quota_operation_journal.cpp
     src/storage/byte_codec.cpp
     src/storage/user_data_file.cpp
     src/storage/user_record.cpp
@@ -48,8 +49,13 @@ add_library(user_service_core
 )
 target_include_directories(user_service_core PUBLIC include)
 target_link_libraries(user_service_core
-    PUBLIC httplib::httplib nlohmann_json::nlohmann_json tecflix_auth
-    PRIVATE mbedcrypto user_service_warnings
+    PUBLIC
+        httplib::httplib
+        nlohmann_json::nlohmann_json
+        tecflix_auth
+    PRIVATE
+        mbedcrypto
+        user_service_warnings
 )
 
 add_executable(user-service src/main.cpp)
