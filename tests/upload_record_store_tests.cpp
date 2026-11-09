@@ -22,7 +22,7 @@ int main() {
     try {
         fs::create_directories(dir / id);
         const tecflix::UploadRecord row{
-            id, 7, 101, "queued", "video-" + id + ":reserve", "not_requested"};
+            id, 7, 101, "queued", "video-" + id + "-reserve", "not_requested"};
         {
             tecflix::UploadRecordStore store(dir);
             store.Save(row);

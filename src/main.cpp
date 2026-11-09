@@ -1,9 +1,11 @@
 #include "tecflix/VideoService.h"
+#include "tecflix/QuotaClient.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 #include <utility>
@@ -51,8 +53,26 @@ int main() {
     }
     const tecflix::auth::JwtValidator validator(secret);
     tecflix::FfmpegTranscoder transcoder(ffmpeg_executable);
+    std::shared_ptr<const tecflix::QuotaClient> quota_client;
+    if (environment_variable("TECFLIX_ENABLE_QUOTAS", "0") == "1") {
+        const auto service_secret = environment_variable("SERVICE_SECRET", "");
+        if (service_secret.empty()) {
+            std::cerr << "SERVICE_SECRET is required when quotas are enabled\n";
+            return 1;
+        }
+        const auto quota_host = environment_variable("TECFLIX_USER_SERVICE_HOST", "127.0.0.1");
+        const auto port_string = environment_variable("TECFLIX_USER_SERVICE_PORT", "8081");
+        char* end = nullptr;
+        const long port = std::strtol(port_string.c_str(), &end, 10);
+        if (end == port_string.c_str() || *end != '\0' || port < 1 || port > 65535) {
+            std::cerr << "Invalid TECFLIX_USER_SERVICE_PORT\n";
+            return 1;
+        }
+        quota_client = std::make_shared<tecflix::QuotaClient>(
+            quota_host, static_cast<int>(port), service_secret);
+    }
     tecflix::VideoService videos(storage, worker_count,
-                                 std::move(transcoder), validator);
+                                 std::move(transcoder), validator, quota_client);
 
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);

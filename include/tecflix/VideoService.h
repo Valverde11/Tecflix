@@ -2,6 +2,7 @@
 
 #include "tecflix/FfmpegTranscoder.h"
 #include "tecflix/UploadRecordStore.h"
+#include "tecflix/QuotaClient.h"
 #include <tecflix/auth/jwt_validator.hpp>
 
 #include <httplib.h>
@@ -12,6 +13,7 @@
 #include <deque>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <thread>
@@ -27,7 +29,8 @@ public:
     VideoService(std::filesystem::path storage_directory,
                  std::size_t worker_count,
                  FfmpegTranscoder transcoder,
-                 const tecflix::auth::JwtValidator& validator);
+                 const tecflix::auth::JwtValidator& validator,
+                 std::shared_ptr<const QuotaClient> quota_client = nullptr);
     ~VideoService();
 
     VideoService(const VideoService&) = delete;
@@ -50,11 +53,14 @@ private:
     bool enqueue(const std::string& video_id);
     std::optional<JobStatus> find_status(const std::string& video_id) const;
     void set_status(const std::string& video_id, JobStatus status);
+    void release_quota(const std::string& video_id);
+    void save_record(const UploadRecord& record);
     static void error(httplib::Response& response, int code, const char* message);
 
     std::filesystem::path storage_directory_;
     FfmpegTranscoder transcoder_;
     UploadRecordStore record_store_;
+    std::shared_ptr<const QuotaClient> quota_client_;
     std::unordered_map<std::string, UploadRecord> records_;
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;

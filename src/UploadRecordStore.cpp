@@ -36,13 +36,13 @@ bool valid_status(const std::string& status) {
 bool valid_quota_state(const std::string& state) {
     return state == "not_requested" || state == "pending" ||
            state == "applied" || state == "release_pending" ||
-           state == "released";
+           state == "released" || state == "denied";
 }
 
 void validate(const UploadRecord& record) {
     if (!valid_id(record.video_id) || record.owner_id == 0 ||
         !valid_status(record.status) || !valid_quota_state(record.quota_state) ||
-        record.quota_operation_id != "video-" + record.video_id + ":reserve") {
+        record.quota_operation_id != "video-" + record.video_id + "-reserve") {
         throw std::runtime_error("Invalid upload record");
     }
 }

@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <limits>
+#include <stdexcept>
 #include <string_view>
 #include <random>
 #include <system_error>
@@ -47,23 +49,76 @@ std::string make_video_id() {
 VideoService::VideoService(std::filesystem::path storage_directory,
                            std::size_t worker_count,
                            FfmpegTranscoder transcoder,
-                           const tecflix::auth::JwtValidator& validator)
+                           const tecflix::auth::JwtValidator& validator,
+                           std::shared_ptr<const QuotaClient> quota_client)
     : storage_directory_(std::move(storage_directory)),
       transcoder_(std::move(transcoder)),
       record_store_(storage_directory_),
+      quota_client_(std::move(quota_client)),
       validator_(validator) {
-    // Existing records are loaded before workers start. Interrupted jobs are
-    // marked failed; an explicit recovery/reenqueue policy will be added later.
+    std::vector<std::string> resume_jobs;
+    // Reconcile operations before starting any worker. A repeated operationId
+    // is safe even if users applied the quota and lost its HTTP response.
     for (auto record : record_store_.LoadAll()) {
-        if (record.status == "queued" || record.status == "processing" ||
-            (record.status == "ready" && !std::filesystem::exists(
-                storage_directory_ / record.video_id / "index.m3u8"))) {
-            record.status = "failed";
+        if (!quota_client_ && record.quota_state != "not_requested") {
+            throw std::runtime_error("Quota records exist: configure the quota client before startup");
+        }
+        const auto source = storage_directory_ / record.video_id / "source.bin";
+        const auto playlist = storage_directory_ / record.video_id / "index.m3u8";
+        if (quota_client_ && record.quota_state == "pending") {
+            const auto result = quota_client_->Apply(record.owner_id,
+                record.quota_operation_id, static_cast<std::int64_t>(record.size_bytes));
+            if (result.outcome == QuotaClient::Outcome::applied) {
+                record.quota_state = "applied";
+                record_store_.Save(record);
+            } else if (result.outcome != QuotaClient::Outcome::uncertain) {
+                record.quota_state = "denied";
+                record.status = "failed";
+                record_store_.Save(record);
+            }
+            // uncertain remains pending on disk; no processing is allowed.
+        }
+        if (quota_client_ && record.quota_state == "applied" &&
+            (record.status == "queued" || record.status == "processing") &&
+            std::filesystem::exists(source)) {
+            record.status = "queued";
+            record_store_.Save(record);
+            resume_jobs.push_back(record.video_id);
+        } else {
+            if (record.status == "queued" || record.status == "processing" ||
+                (record.status == "ready" && !std::filesystem::exists(playlist))) {
+                // Existing uncharged uploads retain the old fail-on-restart policy.
+                // Quota-charged uploads without a source must release the charge.
+                if (quota_client_ && record.quota_state == "applied") {
+                    record.quota_state = "release_pending";
+                }
+                // Pending uploads remain recoverable on the next startup.
+                if (record.quota_state != "pending") record.status = "failed";
+                record_store_.Save(record);
+            }
+        }
+        if (quota_client_ && record.quota_state == "applied" && record.status == "failed") {
+            record.quota_state = "release_pending";
             record_store_.Save(record);
         }
         owners_[record.video_id] = record.owner_id;
-        statuses_[record.video_id] = record.status == "ready" ? JobStatus::ready : JobStatus::failed;
+        statuses_[record.video_id] = record.status == "ready" ? JobStatus::ready :
+            (record.quota_state == "applied" && record.status == "queued" ?
+             JobStatus::queued : JobStatus::failed);
         records_.emplace(record.video_id, std::move(record));
+    }
+    // Release unfinished charged jobs, and retry incomplete releases.
+    if (quota_client_) {
+        std::vector<std::string> release_ids;
+        for (const auto& entry : records_) {
+            if (entry.second.quota_state == "release_pending") release_ids.push_back(entry.first);
+        }
+        for (const auto& id : release_ids) release_quota(id);
+    }
+    // Fill the queue before creating worker threads: constructor failures must
+    // never leave joinable threads behind (std::terminate).
+    for (const auto& id : resume_jobs) {
+        if (!enqueue(id)) throw std::runtime_error("Unable to queue recovered upload");
     }
     workers_.reserve(worker_count);
     for (std::size_t i = 0; i < worker_count; ++i) {
@@ -194,6 +249,38 @@ void VideoService::set_status(const std::string& video_id, JobStatus status) {
     }
 }
 
+void VideoService::save_record(const UploadRecord& record) {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    record_store_.Save(record);
+    records_.at(record.video_id) = record;
+}
+
+void VideoService::release_quota(const std::string& video_id) {
+    if (!quota_client_) return;
+    UploadRecord record;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto found = records_.find(video_id);
+        if (found == records_.end()) return;
+        record = found->second;
+        if (record.quota_state == "applied") {
+            record.quota_state = "release_pending";
+            record_store_.Save(record);
+            found->second = record;
+        }
+        if (record.quota_state != "release_pending") return;
+    }
+    // Reserve and release have distinct, deterministic operation identifiers.
+    const auto result = quota_client_->Apply(record.owner_id,
+        "video-" + record.video_id + "-release",
+        -static_cast<std::int64_t>(record.size_bytes));
+    if (result.outcome == QuotaClient::Outcome::applied) {
+        record.quota_state = "released";
+        save_record(record);
+    }
+    // Any other result stays release_pending for retry on next startup.
+}
+
 bool VideoService::enqueue(const std::string& video_id) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     if (stopping_ || jobs_.size() >= kMaxQueuedJobs) return false;
@@ -254,13 +341,44 @@ void VideoService::upload(const httplib::Request& request,
     }
 
     UploadRecord record{video_id, claims->user_id, received, "queued",
-                        "video-" + video_id + ":reserve", "not_requested"};
+                        "video-" + video_id + "-reserve",
+                        quota_client_ ? "pending" : "not_requested"};
     try {
         record_store_.Save(record);
     } catch (const std::exception&) {
         std::error_code ignored;
         std::filesystem::remove_all(job_directory, ignored);
         return error(response, 500, "could_not_persist_upload");
+    }
+    if (quota_client_) {
+        const auto result = quota_client_->Apply(claims->user_id,
+            record.quota_operation_id, static_cast<std::int64_t>(received));
+        if (result.outcome != QuotaClient::Outcome::applied) {
+            if (result.outcome == QuotaClient::Outcome::uncertain) {
+                // Keep source.bin and the pending record. A restart can retry
+                // this exact operationId, never charging a second time.
+                response.status = 503;
+                response.set_content(std::string("{\"error\":\"quota_result_uncertain\",\"id\":\"") +
+                                     video_id + "\"}", "application/json");
+                return;
+            }
+            std::error_code ignored;
+            std::filesystem::remove_all(job_directory, ignored);
+            if (result.outcome == QuotaClient::Outcome::quota_exceeded)
+                return error(response, 413, "quota_exceeded");
+            if (result.outcome == QuotaClient::Outcome::unauthorized)
+                return error(response, 502, "quota_service_unauthorized");
+            if (result.outcome == QuotaClient::Outcome::conflict)
+                return error(response, 502, "quota_operation_conflict");
+            return error(response, 502, "quota_service_rejected");
+        }
+        record.quota_state = "applied";
+        try {
+            record_store_.Save(record);
+        } catch (const std::exception&) {
+            // PREPARE remains durable. Replaying the same ID is safe.
+            return error(response, 503, "quota_persistence_uncertain");
+        }
     }
     {
         std::lock_guard<std::mutex> lock(status_mutex_);
@@ -269,14 +387,20 @@ void VideoService::upload(const httplib::Request& request,
         owners_[video_id] = claims->user_id;
     }
     if (!enqueue(video_id)) {
-        {
-            std::lock_guard<std::mutex> lock(status_mutex_);
-            statuses_.erase(video_id);
-            owners_.erase(video_id);
-            records_.erase(video_id);
+        if (quota_client_) {
+            set_status(video_id, JobStatus::failed);
+            try { release_quota(video_id); } catch (const std::exception&) {}
+            // Preserve the record until release has been confirmed.
+        } else {
+            {
+                std::lock_guard<std::mutex> lock(status_mutex_);
+                statuses_.erase(video_id);
+                owners_.erase(video_id);
+                records_.erase(video_id);
+            }
+            std::error_code ignored;
+            std::filesystem::remove_all(job_directory, ignored);
         }
-        std::error_code filesystem_error;
-        std::filesystem::remove_all(job_directory, filesystem_error);
         return error(response, 503, "transcoding_queue_full");
     }
 
@@ -335,7 +459,13 @@ void VideoService::worker_loop() {
         std::filesystem::remove(job_directory / "source.bin", filesystem_error);
         const bool playlist_exists =
             std::filesystem::exists(job_directory / "index.m3u8", filesystem_error);
-        set_status(video_id, result == 0 && playlist_exists ? JobStatus::ready : JobStatus::failed);
+        const bool success = result == 0 && playlist_exists;
+        set_status(video_id, success ? JobStatus::ready : JobStatus::failed);
+        if (!success && quota_client_) {
+            try { release_quota(video_id); } catch (const std::exception&) {
+                // Leave the release_pending journal record for recovery.
+            }
+        }
     }
 }
 

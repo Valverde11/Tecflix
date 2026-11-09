@@ -58,6 +58,7 @@ if(BUILD_TESTING AND NOT WIN32)
         src/VideoService.cpp
         src/FfmpegTranscoder.cpp
         src/UploadRecordStore.cpp
+        src/QuotaClient.cpp
     )
     target_include_directories(streaming-auth-tests PRIVATE include)
     target_compile_features(streaming-auth-tests PRIVATE cxx_std_17)
@@ -89,4 +90,20 @@ if(BUILD_TESTING AND NOT WIN32)
     target_compile_features(upload-record-store-tests PRIVATE cxx_std_17)
     target_link_libraries(upload-record-store-tests PRIVATE nlohmann_json::nlohmann_json)
     add_test(NAME UploadRecordStore COMMAND upload-record-store-tests)
+endif()
+
+# Quota integration tests with an in-process fake users service and fake FFmpeg.
+if(BUILD_TESTING AND NOT WIN32)
+    add_executable(streaming-quota-integration-tests
+        tests/streaming_quota_integration_tests.cpp
+        src/VideoService.cpp
+        src/QuotaClient.cpp
+        src/FfmpegTranscoder.cpp
+        src/UploadRecordStore.cpp
+    )
+    target_include_directories(streaming-quota-integration-tests PRIVATE include)
+    target_compile_features(streaming-quota-integration-tests PRIVATE cxx_std_17)
+    target_link_libraries(streaming-quota-integration-tests PRIVATE
+        httplib::httplib Threads::Threads tecflix_auth)
+    add_test(NAME StreamingQuotaIntegration COMMAND streaming-quota-integration-tests)
 endif()
