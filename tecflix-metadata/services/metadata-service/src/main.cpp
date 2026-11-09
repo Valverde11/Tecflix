@@ -19,7 +19,7 @@ int main() {
     // El orden importa: el repositorio debe vivir más que el servicio, y este más que el servidor.
     const auto repository = tecflix::metadata::CreateRepository(config);
     tecflix::metadata::CatalogService service(*repository);
-    tecflix::metadata::ApiServer server(service, config.CorsOrigin());
+    tecflix::metadata::ApiServer server(service, config.CorsOrigin(), config.AuthSecret());
 
     if (!server.Bind(kListenHost, config.Port())) {
       std::cerr << "No se pudo abrir el puerto " << config.Port() << '\n';

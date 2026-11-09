@@ -131,7 +131,7 @@ TEST_F(CatalogServiceTest, ListAplicaLaIdentidadDelSolicitante) {
   VideoQuery mine;
   mine.only_mine = true;
   EXPECT_EQ(service_.List(alice_, mine).total, 2);
-  EXPECT_EQ(ErrorCodeOf([&] { service_.List(std::nullopt, mine); }), "missing_user_id");
+  EXPECT_EQ(ErrorCodeOf([&] { service_.List(std::nullopt, mine); }), "missing_token");
 }
 
 TEST_F(CatalogServiceTest, ListIgnoraUnViewerIdMalicioso) {

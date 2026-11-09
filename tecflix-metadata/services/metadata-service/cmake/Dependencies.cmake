@@ -26,6 +26,21 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+# Mbed TLS proporciona HMAC-SHA256 al validador compartido.
+if(NOT TARGET mbedcrypto)
+    set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(GEN_FILES OFF CACHE BOOL "" FORCE)
+    set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+    set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(mbedtls
+        GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+        GIT_TAG mbedtls-3.6.7
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(mbedtls)
+endif()
+
 if(METADATA_BUILD_TESTS AND NOT TARGET GTest::gtest_main)
     # En Windows, GoogleTest debe usar el mismo runtime de C que el resto del proyecto.
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)

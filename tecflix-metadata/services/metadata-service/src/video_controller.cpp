@@ -16,7 +16,6 @@ namespace {
 constexpr int kDefaultPageSize = 20;
 constexpr int kMaxPageSize = 100;
 constexpr int kMaxPage = 1000000;
-constexpr std::size_t kMaxHeaderValueLength = 128;
 constexpr std::size_t kMaxFilterLength = 100;
 constexpr char kJsonContentType[] = "application/json";
 
@@ -33,32 +32,6 @@ void WriteError(httplib::Response& response, int status, const std::string& code
 
 [[noreturn]] void FailQuery(const std::string& message) {
   throw CatalogError::Invalid("invalid_query", message);
-}
-
-bool IsValidHeaderValue(const std::string& value) {
-  if (value.size() > kMaxHeaderValueLength) return false;
-  for (const char c : value) {
-    if (static_cast<unsigned char>(c) < 0x20) return false;
-  }
-  return true;
-}
-
-// Lee la identidad provisional (X-User-Id / X-User-Name). std::nullopt si no hay usuario.
-std::optional<Identity> ReadIdentity(const httplib::Request& request) {
-  const std::string id = request.get_header_value(VideoController::kUserIdHeader);
-  if (id.empty()) return std::nullopt;
-  const std::string name = request.get_header_value(VideoController::kUserNameHeader);
-  if (!IsValidHeaderValue(id) || !IsValidHeaderValue(name)) {
-    throw CatalogError::Invalid("invalid_user_header",
-                                "X-User-Id o X-User-Name tienen un valor inválido");
-  }
-  return Identity{id, name};
-}
-
-Identity RequireIdentity(const httplib::Request& request) {
-  auto identity = ReadIdentity(request);
-  if (!identity) throw CatalogError::Unauthorized();
-  return *identity;
 }
 
 nlohmann::json ParseBody(const httplib::Request& request) {
@@ -134,7 +107,39 @@ VideoQuery ParseListQuery(const httplib::Request& request) {
 
 }  // namespace
 
-VideoController::VideoController(CatalogService& service) : service_(service) {}
+VideoController::VideoController(CatalogService& service,
+                                 const tecflix::auth::JwtValidator& validator)
+    : service_(service), validator_(validator) {}
+
+std::optional<Identity> VideoController::ReadIdentity(const httplib::Request& request) const {
+  // Sin credenciales se permite consultar videos públicos; credenciales inválidas
+  // nunca se interpretan como visita anónima.
+  if (!request.has_header("Authorization")) return std::nullopt;
+  if (request.get_header_value_count("Authorization") != 1) {
+    throw CatalogError(CatalogError::Kind::kUnauthorized, "invalid_token",
+                       "Authorization debe aparecer una sola vez");
+  }
+  const std::string header = request.get_header_value("Authorization");
+  constexpr const char* prefix = "Bearer ";
+  if (header.rfind(prefix, 0) != 0 || header.size() <= 7) {
+    throw CatalogError(CatalogError::Kind::kUnauthorized, "invalid_token",
+                       "Se requiere Authorization: Bearer <token>");
+  }
+  const auto claims = validator_.Validate(header.substr(7));
+  if (!claims) {
+    throw CatalogError(CatalogError::Kind::kUnauthorized, "invalid_token",
+                       "Token inválido o expirado");
+  }
+  return Identity{std::to_string(claims->user_id), claims->username};
+}
+
+Identity VideoController::RequireIdentity(const httplib::Request& request) const {
+  const auto identity = ReadIdentity(request);
+  if (!identity) throw CatalogError::Unauthorized();
+  return *identity;
+}
+
+
 
 void VideoController::RegisterRoutes(httplib::Server& server) const {
   server.Post(kVideosRoute, Wrap(&VideoController::Create));

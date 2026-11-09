@@ -28,12 +28,13 @@ class Config {
 
   std::uint16_t Port() const { return port_; }
   const std::string& CorsOrigin() const { return cors_origin_; }
+  const std::string& AuthSecret() const { return auth_secret_; }
   const std::string& MongoUri() const { return mongo_uri_; }
   const std::string& MongoDatabase() const { return mongo_database_; }
 
  private:
   Config(std::uint16_t port, std::string cors_origin, std::string mongo_uri,
-         std::string mongo_database);
+         std::string mongo_database, std::string auth_secret);
 
   static std::uint16_t ParsePort(const std::string& text);
 
@@ -41,6 +42,7 @@ class Config {
   std::string cors_origin_;
   std::string mongo_uri_;
   std::string mongo_database_;
+  std::string auth_secret_;
 };
 
 }  // namespace tecflix::metadata

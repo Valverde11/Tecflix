@@ -10,8 +10,7 @@
 
 namespace tecflix::metadata {
 
-// Quién hace la petición. Provisional: viene de las cabeceras X-User-Id y X-User-Name
-// hasta que user-service defina la autenticación (ver SPEC_METADATA.md).
+// Quién hace la petición. Se obtiene de un JWT verificado por el servicio HTTP.
 struct Identity {
   std::string id;
   std::string name;

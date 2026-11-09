@@ -3,6 +3,7 @@
 #include <httplib.h>
 
 #include "tecflix/metadata/catalog_service.hpp"
+#include "tecflix/auth/jwt_validator.hpp"
 
 namespace tecflix::metadata {
 
@@ -24,11 +25,9 @@ class VideoController {
   static constexpr const char* kVideosRoute = "/api/metadata/videos";
   static constexpr const char* kVideoRoute = "/api/metadata/videos/:id";
   static constexpr const char* kUsageRoute = "/api/metadata/users/:owner_id/usage";
-  static constexpr const char* kUserIdHeader = "X-User-Id";
-  static constexpr const char* kUserNameHeader = "X-User-Name";
 
   // `service` debe vivir más que el controlador.
-  explicit VideoController(CatalogService& service);
+  VideoController(CatalogService& service, const tecflix::auth::JwtValidator& validator);
 
   void RegisterRoutes(httplib::Server& server) const;
 
@@ -49,6 +48,9 @@ class VideoController {
   void Usage(const httplib::Request& request, httplib::Response& response) const;
 
   CatalogService& service_;
+  const tecflix::auth::JwtValidator& validator_;
+  std::optional<Identity> ReadIdentity(const httplib::Request& request) const;
+  Identity RequireIdentity(const httplib::Request& request) const;
 };
 
 }  // namespace tecflix::metadata

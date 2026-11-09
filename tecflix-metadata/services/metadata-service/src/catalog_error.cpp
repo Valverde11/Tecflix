@@ -24,8 +24,8 @@ CatalogError CatalogError::Invalid(const std::string& code, const std::string& m
 }
 
 CatalogError CatalogError::Unauthorized() {
-  return CatalogError(Kind::kUnauthorized, "missing_user_id",
-                      "Falta la cabecera X-User-Id");
+  return CatalogError(Kind::kUnauthorized, "missing_token",
+                      "Se requiere Authorization: Bearer <token>");
 }
 
 CatalogError CatalogError::Forbidden() {

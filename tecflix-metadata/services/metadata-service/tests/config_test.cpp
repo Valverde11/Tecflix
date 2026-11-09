@@ -13,7 +13,10 @@ Config FromMap(const std::map<std::string, std::string>& variables) {
   return Config::FromEnvironment(
       [&variables](const std::string& name) -> std::optional<std::string> {
         const auto found = variables.find(name);
-        if (found == variables.end()) return std::nullopt;
+        if (found == variables.end()) {
+          if (name == "AUTH_SECRET") return std::string("test-secret-for-tecflix-metadata-32-bytes");
+          return std::nullopt;
+        }
         return found->second;
       });
 }
@@ -24,6 +27,7 @@ TEST(ConfigTest, UsaValoresPorDefectoSinVariables) {
   EXPECT_EQ(config.CorsOrigin(), "http://localhost:5173");
   EXPECT_EQ(config.MongoUri(), "mongodb://localhost:27017");
   EXPECT_EQ(config.MongoDatabase(), "tecflix_metadata");
+  EXPECT_EQ(config.AuthSecret(), "test-secret-for-tecflix-metadata-32-bytes");
 }
 
 TEST(ConfigTest, LeeTodasLasVariables) {
@@ -35,6 +39,10 @@ TEST(ConfigTest, LeeTodasLasVariables) {
   EXPECT_EQ(config.CorsOrigin(), "http://web:3000");
   EXPECT_EQ(config.MongoUri(), "mongodb://db:27017");
   EXPECT_EQ(config.MongoDatabase(), "otra");
+}
+
+TEST(ConfigTest, RechazaSecretoCorto) {
+  EXPECT_THROW(FromMap({{"AUTH_SECRET", "corto"}}), std::invalid_argument);
 }
 
 TEST(ConfigTest, RechazaPuertosInvalidos) {
@@ -61,7 +69,13 @@ TEST(EnvironmentTest, LeeUnaVariableDefinida) {
 
 TEST(ConfigTest, FromProcessEnvironmentUsaElEntornoReal) {
   // Solo comprueba que no lance: el valor depende de la máquina.
-  EXPECT_NO_THROW({ (void)Config::FromProcessEnvironment().Port(); });
+  // En producción AUTH_SECRET es obligatorio: si no existe, debe fallar el arranque.
+  const auto secret = Environment::Get("AUTH_SECRET");
+  if (secret && secret->size() >= 32) {
+    EXPECT_NO_THROW({ (void)Config::FromProcessEnvironment().Port(); });
+  } else {
+    EXPECT_THROW(Config::FromProcessEnvironment(), std::invalid_argument);
+  }
 }
 
 }  // namespace

@@ -11,6 +11,9 @@ option(METADATA_BUILD_TESTS "Compila las pruebas unitarias" ON)
 option(METADATA_ENABLE_MONGO "Compila el repositorio MongoDB (requiere mongocxx)" OFF)
 
 include(cmake/Dependencies.cmake)
+# Mismo validador HS256 que usa user-service.
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../../shared/auth"
+                 "${CMAKE_CURRENT_BINARY_DIR}/shared-auth")
 
 # Opciones de compilación comunes: todo warning se trata como error (SPEC 7).
 add_library(metadata_warnings INTERFACE)
@@ -37,7 +40,7 @@ add_library(metadata_core
 )
 target_include_directories(metadata_core PUBLIC include)
 target_link_libraries(metadata_core
-    PUBLIC httplib::httplib nlohmann_json::nlohmann_json
+    PUBLIC httplib::httplib nlohmann_json::nlohmann_json tecflix_auth
     PRIVATE metadata_warnings
 )
 # cpp-httplib 0.62 exige Windows 10 o posterior. MSVC ya apunta a la versión del SDK,

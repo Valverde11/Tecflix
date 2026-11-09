@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <cstdint>
+#include <string>
+#include <mbedtls/md.h>
 #include <stdexcept>
 #include <thread>
 
@@ -19,8 +22,46 @@ using testing::Id;
 constexpr char kOrigin[] = "http://localhost:5173";
 constexpr char kJson[] = "application/json";
 
+constexpr char kSecret[] = "tecflix-jwt-shared-test-secret-32-bytes-minimum";
+
+std::string Base64Url(const std::string& input) {
+  static constexpr char alphabet[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  std::string output;
+  unsigned int value = 0;
+  int bits = -6;
+  for (unsigned char c : input) {
+    value = (value << 8) | c;
+    bits += 8;
+    while (bits >= 0) {
+      output.push_back(alphabet[(value >> bits) & 63]);
+      bits -= 6;
+    }
+  }
+  if (bits > -6) output.push_back(alphabet[((value << 8) >> (bits + 8)) & 63]);
+  return output;
+}
+
+std::string JwtFor(std::uint64_t user_id, const std::string& username,
+                   std::int64_t expiration = 4102444800) {
+  const std::string header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
+  const std::string payload = json{{"sub", std::to_string(user_id)},
+                                   {"username", username}, {"exp", expiration}}.dump();
+  const std::string input = header + "." + Base64Url(payload);
+  unsigned char signature[32]{};
+  const auto* md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (!md || mbedtls_md_hmac(md, reinterpret_cast<const unsigned char*>(kSecret),
+                            sizeof(kSecret) - 1,
+                            reinterpret_cast<const unsigned char*>(input.data()),
+                            input.size(), signature) != 0) {
+    throw std::runtime_error("No se pudo crear JWT de prueba");
+  }
+  return input + "." + Base64Url(std::string(reinterpret_cast<const char*>(signature), 32));
+}
+
 httplib::Headers As(const std::string& user) {
-  return {{"X-User-Id", user}, {"X-User-Name", user}};
+  const std::uint64_t id = user == "alice" ? 1 : user == "bob" ? 2 : 3;
+  return {{"Authorization", "Bearer " + JwtFor(id, user)}};
 }
 
 // Levanta el servidor real en un puerto libre y lo prueba con el cliente de httplib:
@@ -28,7 +69,7 @@ httplib::Headers As(const std::string& user) {
 class ApiServerHarness {
  public:
   explicit ApiServerHarness(VideoRepository& repository)
-      : service_(repository), server_(service_, kOrigin) {
+      : service_(repository), server_(service_, kOrigin, kSecret) {
     port_ = server_.BindToAnyPort("127.0.0.1");
     EXPECT_GT(port_, 0);
     thread_ = std::thread([this] { server_.Listen(); });
@@ -114,7 +155,7 @@ TEST_F(ApiTest, RespondeCorsYPreflight) {
   ASSERT_TRUE(preflight);
   EXPECT_EQ(preflight->status, 204);
   EXPECT_EQ(preflight->get_header_value("Access-Control-Allow-Origin"), kOrigin);
-  EXPECT_NE(preflight->get_header_value("Access-Control-Allow-Headers").find("X-User-Id"),
+  EXPECT_NE(preflight->get_header_value("Access-Control-Allow-Headers").find("Authorization"),
             std::string::npos);
   EXPECT_NE(preflight->get_header_value("Access-Control-Allow-Methods").find("PATCH"),
             std::string::npos);
@@ -128,7 +169,7 @@ TEST_F(ApiTest, CrearDevuelve201ConLocationYElVideo) {
   EXPECT_EQ(result->get_header_value("Location"), "/api/metadata/videos/" + Id(1));
   const json video = json::parse(result->body);
   EXPECT_EQ(video["id"], Id(1));
-  EXPECT_EQ(video["owner_id"], "alice");
+  EXPECT_EQ(video["owner_id"], "1");
   EXPECT_EQ(video["visibility"], "public");
   EXPECT_EQ(video["tags"], json::array({"a"}));
   EXPECT_EQ(video["uploaded_at"], video["updated_at"]);
@@ -141,7 +182,7 @@ TEST_F(ApiTest, CrearRechazaPeticionesInvalidas) {
   auto result = client.Post("/api/metadata/videos", valid.dump(), kJson);
   ASSERT_TRUE(result);
   EXPECT_EQ(result->status, 401);
-  EXPECT_EQ(json::parse(result->body)["error"], "missing_user_id");
+  EXPECT_EQ(json::parse(result->body)["error"], "missing_token");
 
   result = client.Post("/api/metadata/videos", As("alice"), valid.dump(), "text/plain");
   ASSERT_TRUE(result);
@@ -163,11 +204,39 @@ TEST_F(ApiTest, CrearRechazaPeticionesInvalidas) {
   EXPECT_EQ(json::parse(result->body)["error"], "unknown_field");
 
   result = client.Post("/api/metadata/videos",
-                       httplib::Headers{{"X-User-Id", std::string(200, 'x')}}, valid.dump(),
+                       httplib::Headers{{"Authorization", "Bearer invalid"}}, valid.dump(),
                        kJson);
   ASSERT_TRUE(result);
-  EXPECT_EQ(result->status, 400);
-  EXPECT_EQ(json::parse(result->body)["error"], "invalid_user_header");
+  EXPECT_EQ(result->status, 401);
+  EXPECT_EQ(json::parse(result->body)["error"], "invalid_token");
+}
+
+TEST_F(ApiTest, NoConfiaEnCabecerasDeIdentidadAntiguas) {
+  auto client = harness_.Client();
+  const json body = {{"id", Id(33)}, {"title", "sin permisos"}};
+  auto result = client.Post("/api/metadata/videos",
+                            httplib::Headers{{"X-User-Id", "1"},
+                                             {"X-User-Name", "alice"}},
+                            body.dump(), kJson);
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->status, 401);
+}
+
+TEST_F(ApiTest, RechazaTokenCaducadoOManipulado) {
+  auto client = harness_.Client();
+  const json body = {{"id", Id(34)}, {"title", "sin permisos"}};
+  auto expired = client.Post("/api/metadata/videos",
+                             httplib::Headers{{"Authorization", "Bearer " + JwtFor(1, "alice", 1)}},
+                             body.dump(), kJson);
+  ASSERT_TRUE(expired);
+  EXPECT_EQ(expired->status, 401);
+  std::string token = JwtFor(1, "alice");
+  token[token.size() - 10] = token[token.size() - 10] == 'A' ? 'B' : 'A';
+  auto forged = client.Post("/api/metadata/videos",
+                            httplib::Headers{{"Authorization", "Bearer " + token}},
+                            body.dump(), kJson);
+  ASSERT_TRUE(forged);
+  EXPECT_EQ(forged->status, 401);
 }
 
 TEST_F(ApiTest, CrearUnIdRepetidoDa409) {
@@ -340,17 +409,17 @@ TEST_F(ApiTest, UsoDeAlmacenamiento) {
   CreateOk("alice", 2, "b", "private");
   auto client = harness_.Client();
 
-  auto result = client.Get("/api/metadata/users/alice/usage", As("alice"));
+  auto result = client.Get("/api/metadata/users/1/usage", As("alice"));
   ASSERT_TRUE(result);
   EXPECT_EQ(result->status, 200);
   EXPECT_EQ(json::parse(result->body),
-            (json{{"owner_id", "alice"}, {"video_count", 2}, {"used_bytes", 200}}));
+            (json{{"owner_id", "1"}, {"video_count", 2}, {"used_bytes", 200}}));
 
-  result = client.Get("/api/metadata/users/alice/usage", As("bob"));
+  result = client.Get("/api/metadata/users/1/usage", As("bob"));
   ASSERT_TRUE(result);
   EXPECT_EQ(result->status, 403);
 
-  result = client.Get("/api/metadata/users/alice/usage");
+  result = client.Get("/api/metadata/users/1/usage");
   ASSERT_TRUE(result);
   EXPECT_EQ(result->status, 401);
 }

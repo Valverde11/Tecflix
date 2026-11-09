@@ -17,7 +17,7 @@ class ApiServer {
  public:
   // `service` debe vivir más que el servidor. `cors_origin` es el único origen web
   // autorizado (la aplicación React); viene de CORS_ORIGIN.
-  ApiServer(CatalogService& service, std::string cors_origin);
+  ApiServer(CatalogService& service, std::string cors_origin, std::string auth_secret);
 
   ApiServer(const ApiServer&) = delete;
   ApiServer& operator=(const ApiServer&) = delete;
@@ -36,6 +36,7 @@ class ApiServer {
 
   httplib::Server server_;
   std::string cors_origin_;
+  tecflix::auth::JwtValidator jwt_validator_;
   HealthController health_controller_;
   VideoController video_controller_;
 };
