@@ -7,6 +7,7 @@
 #include <string>
 
 #include "tecflix/users/security/password_hasher.hpp"
+#include "tecflix/users/quota_operation_journal.hpp"
 #include "tecflix/users/storage/user_repository.hpp"
 
 namespace tecflix::users {
@@ -60,7 +61,7 @@ class UserService {
 
   // repository debe vivir más que este servicio.
   UserService(UserRepository& repository, PasswordHasher hasher,
-              Clock clock = SystemClock);
+              Clock clock = SystemClock, QuotaOperationJournal* journal = nullptr);
 
   UserProfile Register(const Registration& registration);
   // Verifica las credenciales y devuelve el usuario. Todo fallo lanza el mismo
@@ -81,12 +82,21 @@ class UserService {
   // tamaño mal reportado, y ajustar a cero escondería ese error.
   QuotaUsage ReleaseSpace(std::uint64_t id, std::uint64_t bytes);
 
+  // Cada operationId tiene un único (usuario, delta). Al repetirse, no cobra.
+  // delta > 0 reserva; delta < 0 libera. Requiere un diario persistente.
+  QuotaUsage ApplyQuotaOperation(std::uint64_t id,
+                                 const std::string& operation_id,
+                                 std::int64_t delta_bytes);
+
  private:
   // Lanza kUserNotFound si el usuario no existe. Quien la llama debe tener
   // tomado repository_mutex_.
   UserRecord LoadUser(std::uint64_t id);
+  // Repara PREPARE pendientes, siempre bajo repository_mutex_.
+  void RecoverPendingQuotaOperations();
 
   UserRepository& repository_;
+  QuotaOperationJournal* journal_;
   std::mutex repository_mutex_;
   PasswordHasher hasher_;
   Clock clock_;

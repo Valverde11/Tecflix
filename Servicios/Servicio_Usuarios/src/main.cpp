@@ -8,6 +8,7 @@
 #include "tecflix/users/security/password_hasher.hpp"
 #include "tecflix/users/security/service_token_verifier.hpp"
 #include "tecflix/users/storage/user_repository.hpp"
+#include "tecflix/users/quota_operation_journal.hpp"
 #include "tecflix/users/user_controller.hpp"
 
 namespace {
@@ -22,7 +23,9 @@ int main() {
     const auto config = Config::FromProcessEnvironment();
 
     UserRepository repository(config.DataDirectory());
-    UserService users(repository, PasswordHasher{});
+    QuotaOperationJournal quota_journal(config.DataDirectory() / "quota_operations.log");
+    UserService users(repository, PasswordHasher{}, UserService::SystemClock,
+                      &quota_journal);
     const AuthService auth(config.AuthSecret());
     const ServiceTokenVerifier service_tokens(config.ServiceSecret());
     UserController controller(users, auth, service_tokens);

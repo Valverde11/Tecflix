@@ -13,6 +13,7 @@ add_executable(user_service_tests
     crypto_primitives_test.cpp
     page_file_test.cpp
     quota_operation_journal_test.cpp
+    quota_idempotency_test.cpp
     password_hasher_test.cpp
     service_token_verifier_test.cpp
     user_controller_test.cpp

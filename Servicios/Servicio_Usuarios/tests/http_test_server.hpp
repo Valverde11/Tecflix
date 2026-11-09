@@ -13,6 +13,7 @@
 #include "tecflix/users/domain/user_service.hpp"
 #include "tecflix/users/security/password_hasher.hpp"
 #include "tecflix/users/storage/user_repository.hpp"
+#include "tecflix/users/quota_operation_journal.hpp"
 #include "tecflix/users/user_controller.hpp"
 #include "temp_directory.hpp"
 
@@ -83,8 +84,9 @@ class HttpTestServer : public ::testing::Test {
 
   TempDirectory temp_;
   UserRepository repository_{temp_.Path(), kSmallDegree};
+  QuotaOperationJournal journal_{temp_.Path() / "quota_operations.log"};
   UserService users_{repository_, PasswordHasher{kFastIterations},
-                     [] { return kNow; }};
+                     [] { return kNow; }, &journal_};
   AuthService auth_{kAuthSecret, [] { return kNow; }};
   ServiceTokenVerifier service_tokens_{kServiceSecret};
   UserController controller_{users_, auth_, service_tokens_};
