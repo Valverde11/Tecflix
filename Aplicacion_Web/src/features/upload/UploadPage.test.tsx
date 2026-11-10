@@ -49,7 +49,7 @@ describe('UploadPage', () => {
       http.post(UPLOAD_URL, ({ request }) => {
         contentType = request.headers.get('Content-Type');
         return HttpResponse.json(
-          { id: UPLOADED_VIDEO_ID, status: 'queued' },
+          { id: UPLOADED_VIDEO_ID, status: 'queued', size_bytes: video.size },
           { status: 202, headers: CORS_HEADERS },
         );
       }),
@@ -72,6 +72,45 @@ describe('UploadPage', () => {
       sizeBytes: video.size,
       durationSeconds: DURATION_SECONDS,
     });
+  });
+
+  it('usa size_bytes medidos por streaming para crear metadata', async () => {
+    const measuredBytes = video.size + 135;
+    server.use(
+      http.post(UPLOAD_URL, () =>
+        HttpResponse.json(
+          { id: UPLOADED_VIDEO_ID, status: 'queued', size_bytes: measuredBytes },
+          { status: 202, headers: CORS_HEADERS },
+        ),
+      ),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+
+    expect(await screen.findByRole('link', { name: 'Volver a los videos' })).toBeInTheDocument();
+    expect(videoStore.find(UPLOADED_VIDEO_ID)?.sizeBytes).toBe(measuredBytes);
+  });
+
+  it('no crea metadata si streaming omite size_bytes', async () => {
+    let metadataPosts = 0;
+    server.use(
+      http.post(UPLOAD_URL, () =>
+        HttpResponse.json({ id: UPLOADED_VIDEO_ID, status: 'queued' }, {
+          status: 202, headers: CORS_HEADERS,
+        }),
+      ),
+      http.post(METADATA_URL, () => {
+        metadataPosts += 1;
+        return HttpResponse.json({ error: 'unexpected' }, { status: 500 });
+      }),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('size_bytes');
+    expect(metadataPosts).toBe(0);
   });
 
   it('es privado si no se elige otra cosa', async () => {
