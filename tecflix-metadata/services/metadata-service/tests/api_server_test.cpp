@@ -247,6 +247,25 @@ TEST_F(ApiTest, CrearUnIdRepetidoDa409) {
   EXPECT_EQ(json::parse(result->body)["error"], "video_already_exists");
 }
 
+TEST_F(ApiTest, ReintentoHttpDeCreacionNoDuplicaMetadata) {
+  const json request = {{"id", Id(42)}, {"title", "Mi video"},
+                        {"visibility", "private"}, {"size_bytes", 7514424},
+                        {"tags", json::array({"test"})}};
+  const auto first = Create("alice", request);
+  ASSERT_TRUE(first);
+  ASSERT_EQ(first->status, 201) << first->body;
+  const auto repeat = Create("alice", request);
+  ASSERT_TRUE(repeat);
+  EXPECT_EQ(repeat->status, 201) << repeat->body;
+  EXPECT_EQ(json::parse(repeat->body), json::parse(first->body));
+  EXPECT_EQ(List("?mine=true", "alice")["total"], 1);
+  auto incompatible = request;
+  incompatible["size_bytes"] = 123;
+  const auto conflict = Create("alice", incompatible);
+  ASSERT_TRUE(conflict);
+  EXPECT_EQ(conflict->status, 409);
+}
+
 TEST_F(ApiTest, ElErrorTrae_error_y_message) {
   const auto result = Create("alice", {{"id", "x"}, {"title", "x"}});
   ASSERT_TRUE(result);
