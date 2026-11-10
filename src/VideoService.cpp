@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <nlohmann/json.hpp>
 #include <iterator>
 #include <limits>
 #include <stdexcept>
@@ -51,11 +52,14 @@ VideoService::VideoService(std::filesystem::path storage_directory,
                            std::size_t worker_count,
                            FfmpegTranscoder transcoder,
                            const tecflix::auth::JwtValidator& validator,
-                           std::shared_ptr<const QuotaClient> quota_client)
+                           std::shared_ptr<const QuotaClient> quota_client,
+                           std::string metadata_host, int metadata_port)
     : storage_directory_(std::move(storage_directory)),
       transcoder_(std::move(transcoder)),
       record_store_(storage_directory_),
       quota_client_(std::move(quota_client)),
+      metadata_host_(std::move(metadata_host)),
+      metadata_port_(metadata_port),
       validator_(validator) {
     std::vector<std::string> resume_jobs;
     std::vector<std::string> resume_deletions;
@@ -212,6 +216,7 @@ void VideoService::register_routes(httplib::Server& server) {
         if (!authorize_video(request, response, id)) return;
         const auto status = find_status(id);
         if (!status) return error(response, 404, "video_not_found");
+        response.set_header("Cache-Control", "no-store");
         response.set_content(std::string("{\"status\":\"") + status_name(*status) + "\"}",
                              "application/json");
     });
@@ -229,7 +234,7 @@ void VideoService::register_routes(httplib::Server& server) {
         const std::string body((std::istreambuf_iterator<char>(playlist)),
                                std::istreambuf_iterator<char>());
         response.set_content(body, "application/vnd.apple.mpegurl");
-        response.set_header("Cache-Control", "no-cache");
+        response.set_header("Cache-Control", "no-store");
     });
 
     server.Get(R"(/api/videos/([a-f0-9]{32})/segments/(segment_[0-9]{5}\.ts))",
@@ -265,19 +270,65 @@ std::optional<tecflix::auth::JwtClaims> VideoService::authenticate(
 bool VideoService::authorize_video(const httplib::Request& request,
                                    httplib::Response& response,
                                    const std::string& video_id) const {
-    const auto claims = authenticate(request, response);
-    if (!claims) return false;
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    const auto owner = owners_.find(video_id);
-    if (owner == owners_.end()) {
-        error(response, 404, "video_not_found");
-        return false;
+    // Check that this ID exists locally, but never hold the mutex across an HTTP call.
+    std::uint64_t owner_id = 0;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto owner = owners_.find(video_id);
+        if (owner == owners_.end()) {
+            error(response, 404, "video_not_found");
+            return false;
+        }
+        owner_id = owner->second;
     }
-    if (owner->second != claims->user_id) {
-        error(response, 403, "forbidden");
-        return false;
+
+    // Reject malformed/expired credentials even for public videos. Anonymous access
+    // is supported only when no Authorization header is present.
+    std::optional<tecflix::auth::JwtClaims> claims;
+    if (request.has_header("Authorization")) {
+        claims = authenticate(request, response);
+        if (!claims) return false;
     }
-    return true;
+
+    if (metadata_host_.empty() || metadata_port_ == 0) {
+        // Legacy owner-only mode for deployments/tests without metadata integration.
+        if (!claims) return error(response, 401, "invalid_token"), false;
+        if (claims->user_id != owner_id) return error(response, 403, "forbidden"), false;
+        return true;
+    }
+
+    // Metadata is the authority for public/private visibility. Never infer
+    // public access from the route or from anything supplied by the browser.
+    httplib::Client metadata(metadata_host_, metadata_port_);
+    metadata.set_connection_timeout(2);
+    metadata.set_read_timeout(3);
+    httplib::Headers headers;
+    if (claims) headers.emplace("Authorization", request.get_header_value("Authorization"));
+    const auto result = metadata.Get("/api/metadata/videos/" + video_id, headers);
+    if (!result) return error(response, 503, "metadata_unavailable"), false;
+
+    if (result->status != 200) {
+        if (result->status == 404 || result->status == 403 || result->status == 401)
+            return error(response, claims ? 403 : 401, "video_access_denied"), false;
+        return error(response, 503, "metadata_unavailable"), false;
+    }
+
+    const auto info = nlohmann::json::parse(result->body, nullptr, false);
+    if (info.is_discarded() || !info.is_object() || !info.contains("id") ||
+        !info.contains("owner_id") || !info.contains("visibility") ||
+        !info["id"].is_string() || !info["owner_id"].is_string() ||
+        !info["visibility"].is_string()) {
+        return error(response, 503, "metadata_invalid_response"), false;
+    }
+    if (info["id"].get<std::string>() != video_id ||
+        info["owner_id"].get<std::string>() != std::to_string(owner_id)) {
+        return error(response, 503, "metadata_owner_mismatch"), false;
+    }
+    const auto visibility = info["visibility"].get<std::string>();
+    if (visibility == "public") return true;
+    if (visibility == "private" && claims && claims->user_id == owner_id) return true;
+    if (visibility != "private") return error(response, 503, "metadata_invalid_response"), false;
+    return error(response, claims ? 403 : 401, "video_access_denied"), false;
 }
 
 void VideoService::error(httplib::Response& response, int code, const char* message) {
@@ -650,7 +701,9 @@ void VideoService::stream_segment(const std::filesystem::path& path,
     const auto size = std::filesystem::file_size(path, filesystem_error);
     if (filesystem_error) return error(response, 404, "segment_not_found");
 
-    response.set_header("Cache-Control", "public, max-age=31536000, immutable");
+    // Visibility can change from public to private; never persist HLS segments
+    // in shared/browser caches after access has been revoked.
+    response.set_header("Cache-Control", "no-store");
     response.set_content_provider(size, "video/mp2t",
         [path](std::size_t offset, std::size_t length, httplib::DataSink& sink) {
             std::ifstream input(path, std::ios::binary);

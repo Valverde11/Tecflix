@@ -30,7 +30,8 @@ public:
                  std::size_t worker_count,
                  FfmpegTranscoder transcoder,
                  const tecflix::auth::JwtValidator& validator,
-                 std::shared_ptr<const QuotaClient> quota_client = nullptr);
+                 std::shared_ptr<const QuotaClient> quota_client = nullptr,
+                 std::string metadata_host = "", int metadata_port = 0);
     ~VideoService();
 
     VideoService(const VideoService&) = delete;
@@ -66,6 +67,8 @@ private:
     FfmpegTranscoder transcoder_;
     UploadRecordStore record_store_;
     std::shared_ptr<const QuotaClient> quota_client_;
+    std::string metadata_host_;
+    int metadata_port_ = 0;
     std::unordered_map<std::string, UploadRecord> records_;
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;

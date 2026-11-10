@@ -43,7 +43,7 @@ add_executable(tecflix-api
 )
 target_include_directories(tecflix-api PRIVATE include)
 target_compile_features(tecflix-api PRIVATE cxx_std_17)
-target_link_libraries(tecflix-api PRIVATE httplib::httplib Threads::Threads tecflix_auth)
+target_link_libraries(tecflix-api PRIVATE httplib::httplib Threads::Threads tecflix_auth nlohmann_json::nlohmann_json)
 
 if(MSVC)
     target_compile_options(tecflix-api PRIVATE /W4 /O2)
@@ -63,7 +63,7 @@ if(BUILD_TESTING AND NOT WIN32)
     target_include_directories(streaming-auth-tests PRIVATE include)
     target_compile_features(streaming-auth-tests PRIVATE cxx_std_17)
     target_link_libraries(streaming-auth-tests PRIVATE
-        httplib::httplib Threads::Threads tecflix_auth)
+        httplib::httplib Threads::Threads tecflix_auth nlohmann_json::nlohmann_json)
     add_test(NAME StreamingAuthHttp COMMAND streaming-auth-tests)
 endif()
 
@@ -104,6 +104,6 @@ if(BUILD_TESTING AND NOT WIN32)
     target_include_directories(streaming-quota-integration-tests PRIVATE include)
     target_compile_features(streaming-quota-integration-tests PRIVATE cxx_std_17)
     target_link_libraries(streaming-quota-integration-tests PRIVATE
-        httplib::httplib Threads::Threads tecflix_auth)
+        httplib::httplib Threads::Threads tecflix_auth nlohmann_json::nlohmann_json)
     add_test(NAME StreamingQuotaIntegration COMMAND streaming-quota-integration-tests)
 endif()
