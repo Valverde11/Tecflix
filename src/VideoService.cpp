@@ -57,11 +57,19 @@ VideoService::VideoService(std::filesystem::path storage_directory,
       quota_client_(std::move(quota_client)),
       validator_(validator) {
     std::vector<std::string> resume_jobs;
+    std::vector<std::string> resume_deletions;
     // Reconcile operations before starting any worker. A repeated operationId
     // is safe even if users applied the quota and lost its HTTP response.
     for (auto record : record_store_.LoadAll()) {
         if (!quota_client_ && record.quota_state != "not_requested") {
             throw std::runtime_error("Quota records exist: configure the quota client before startup");
+        }
+        if (record.status == "deleting") {
+            // Do not resurrect videos whose deletion was durably requested.
+            // The corresponding quota release may still need a retry.
+            resume_deletions.push_back(record.video_id);
+            records_.emplace(record.video_id, std::move(record));
+            continue;
         }
         const auto source = storage_directory_ / record.video_id / "source.bin";
         const auto playlist = storage_directory_ / record.video_id / "index.m3u8";
@@ -115,6 +123,12 @@ VideoService::VideoService(std::filesystem::path storage_directory,
         }
         for (const auto& id : release_ids) release_quota(id);
     }
+    // Finish previous DELETE operations before any worker can start.
+    for (const auto& id : resume_deletions) {
+        try { finalize_deletion(id); } catch (const std::exception&) {
+            // Keep durable tombstone; the owner can retry DELETE later.
+        }
+    }
     // Fill the queue before creating worker threads: constructor failures must
     // never leave joinable threads behind (std::terminate).
     for (const auto& id : resume_jobs) {
@@ -144,6 +158,11 @@ void VideoService::register_routes(httplib::Server& server) {
                                       httplib::Response& response,
                                       const httplib::ContentReader& read_body) {
         upload(request, response, read_body);
+    });
+
+    server.Delete(R"(/api/videos/([a-f0-9]{32}))",
+                  [this](const httplib::Request& request, httplib::Response& response) {
+        delete_video(request, response, request.matches[1].str());
     });
 
     server.Get(R"(/api/videos/([a-f0-9]{32}))",
@@ -279,6 +298,85 @@ void VideoService::release_quota(const std::string& video_id) {
         save_record(record);
     }
     // Any other result stays release_pending for retry on next startup.
+}
+
+// The tombstone must already be durable before this method runs. The result
+// remains false if the release is uncertain; nothing is removed from disk.
+bool VideoService::finalize_deletion(const std::string& video_id) {
+    UploadRecord record;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto it = records_.find(video_id);
+        if (it == records_.end()) return true;
+        record = it->second;
+        if (record.status != "deleting") return false;
+    }
+    if (quota_client_ && (record.quota_state == "applied" ||
+                          record.quota_state == "release_pending")) {
+        release_quota(video_id);
+    }
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto it = records_.find(video_id);
+        if (it == records_.end()) return true;
+        if (it->second.quota_state == "applied" ||
+            it->second.quota_state == "release_pending" ||
+            it->second.quota_state == "pending") return false;
+    }
+    // A released operation is durable before we remove any files. If we crash
+    // during removal, the next restart skips the missing/incomplete directory.
+    std::error_code ec;
+    std::filesystem::remove_all(storage_directory_ / video_id, ec);
+    if (ec) return false;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        records_.erase(video_id);
+        owners_.erase(video_id);
+        statuses_.erase(video_id);
+    }
+    return true;
+}
+
+void VideoService::delete_video(const httplib::Request& request,
+                                httplib::Response& response,
+                                const std::string& video_id) {
+    const auto claims = authenticate(request, response);
+    if (!claims) return;
+    // Serialize concurrent DELETE attempts, including quota release/retry.
+    std::lock_guard<std::mutex> deletion_lock(deletion_mutex_);
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto it = records_.find(video_id);
+        if (it == records_.end()) return error(response, 404, "video_not_found");
+        if (it->second.owner_id != claims->user_id)
+            return error(response, 403, "forbidden");
+        if (it->second.status != "deleting") {
+            if (it->second.status == "queued" || it->second.status == "processing" ||
+                it->second.quota_state == "pending")
+                return error(response, 409, "video_busy");
+            auto updated = it->second;
+            updated.status = "deleting";
+            try {
+                record_store_.Save(updated);
+            } catch (const std::exception&) {
+                return error(response, 500, "could_not_persist_delete");
+            }
+            it->second = updated;
+            // No new GET/HLS requests can authorize this video.
+            owners_.erase(video_id);
+            statuses_.erase(video_id);
+        }
+    }
+    try {
+        if (finalize_deletion(video_id)) {
+            response.status = 204;
+            return;
+        }
+    } catch (const std::exception&) {
+        // Recovery will retry the same release operation after restart.
+    }
+    response.status = 202;
+    response.set_content(R"({"status":"deletion_pending"})", "application/json");
 }
 
 bool VideoService::enqueue(const std::string& video_id) {

@@ -54,6 +54,9 @@ private:
     std::optional<JobStatus> find_status(const std::string& video_id) const;
     void set_status(const std::string& video_id, JobStatus status);
     void release_quota(const std::string& video_id);
+    bool finalize_deletion(const std::string& video_id);
+    void delete_video(const httplib::Request& request, httplib::Response& response,
+                      const std::string& video_id);
     void save_record(const UploadRecord& record);
     static void error(httplib::Response& response, int code, const char* message);
 
@@ -64,6 +67,7 @@ private:
     std::unordered_map<std::string, UploadRecord> records_;
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;
+    std::mutex deletion_mutex_;
     std::unordered_map<std::string, JobStatus> statuses_;
     std::unordered_map<std::string, std::uint64_t> owners_;
     std::mutex queue_mutex_;

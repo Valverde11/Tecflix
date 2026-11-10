@@ -30,7 +30,7 @@ bool valid_id(const std::string& id) {
 
 bool valid_status(const std::string& status) {
     return status == "queued" || status == "processing" ||
-           status == "ready" || status == "failed";
+           status == "ready" || status == "failed" || status == "deleting";
 }
 
 bool valid_quota_state(const std::string& state) {

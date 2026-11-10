@@ -229,6 +229,74 @@ int main() {
             require(users.usage() == 6000 && users.operation_count() == 4,
                     "Restart does not repeat committed reserve or release");
         }
+        // Deletion runs against the exact same quota contract as an upload.
+        {
+            TempDir deletion_temp;
+            const auto delete_ffmpeg = deletion_temp.path / "fake_ffmpeg_delete.sh";
+            {
+                std::ofstream script(delete_ffmpeg);
+                script << "#!/bin/sh\nfor last do :; done\n"
+                       << "printf '#EXTM3U\\n#EXT-X-ENDLIST\\n' > \"$last\"\n";
+            }
+            fs::permissions(delete_ffmpeg, fs::perms::owner_exec, fs::perm_options::add);
+            FakeUsers delete_users;
+            auto delete_quota = std::make_shared<tecflix::QuotaClient>(
+                "127.0.0.1", delete_users.port, "test-service-secret");
+            const auto delete_storage = deletion_temp.path / "videos";
+            const auto delete_transcoder = tecflix::FfmpegTranscoder(delete_ffmpeg.string());
+            std::string retry_id;
+            {
+                tecflix::VideoService videos(delete_storage, 1, delete_transcoder,
+                    validator, delete_quota);
+                RunningStreaming running(videos);
+                httplib::Client client("127.0.0.1", running.port);
+                const auto first = client.Post("/api/videos", bearer(kTokenA),
+                    std::string(1000, '1'), "application/octet-stream");
+                require(status(first) == 202, "Upload for deletion accepted");
+                const auto first_id = nlohmann::json::parse(first->body).at("id").get<std::string>();
+                require(wait_for(client, "/api/videos/" + first_id, "ready"),
+                    "Deletion candidate is ready");
+                require(status(client.Delete("/api/videos/" + first_id, bearer(kTokenB))) == 403,
+                    "Another user cannot delete video");
+                require(status(client.Delete("/api/videos/" + first_id)) == 401,
+                    "Anonymous user cannot delete video");
+                require(delete_users.usage() == 1000, "Forbidden requests did not release quota");
+                require(status(client.Delete("/api/videos/" + first_id, bearer(kTokenA))) == 204,
+                    "Owner DELETE completes");
+                require(delete_users.usage() == 0 && delete_users.operation_count() == 2,
+                    "Owner DELETE releases exactly once");
+                require(status(client.Get("/api/videos/" + first_id, bearer(kTokenA))) == 404,
+                    "Deleted video is not accessible");
+                require(status(client.Delete("/api/videos/" + first_id, bearer(kTokenA))) == 404,
+                    "Repeated DELETE does not charge or release");
+                require(!fs::exists(delete_storage / first_id),
+                    "Deletion removes files and record");
+                const auto next = client.Post("/api/videos", bearer(kTokenA),
+                    std::string(700, '2'), "application/octet-stream");
+                require(status(next) == 202, "Second deletion candidate uploaded");
+                retry_id = nlohmann::json::parse(next->body).at("id").get<std::string>();
+                require(wait_for(client, "/api/videos/" + retry_id, "ready"),
+                    "Second deletion candidate is ready");
+                delete_users.lose_next_success = true;
+                require(status(client.Delete("/api/videos/" + retry_id, bearer(kTokenA))) == 202,
+                    "Lost release response keeps deletion pending");
+                require(delete_users.usage() == 0, "Users committed release before reply loss");
+                require(status(client.Get("/api/videos/" + retry_id, bearer(kTokenA))) == 404,
+                    "Deletion pending cannot serve video");
+            }
+            {
+                tecflix::VideoService videos(delete_storage, 1, delete_transcoder,
+                    validator, delete_quota);
+                RunningStreaming running(videos);
+                httplib::Client client("127.0.0.1", running.port);
+                require(status(client.Get("/api/videos/" + retry_id, bearer(kTokenA))) == 404,
+                    "Deletion remains hidden after restart");
+                require(!fs::exists(delete_storage / retry_id),
+                    "Restart finishes pending deletion");
+                require(delete_users.usage() == 0 && delete_users.operation_count() == 4,
+                    "Recovery retries same release id, never twice");
+            }
+        }
         std::cout << "StreamingQuotaIntegration passed\n";
         return 0;
     } catch (const std::exception& error) {
