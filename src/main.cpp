@@ -71,8 +71,22 @@ int main() {
         quota_client = std::make_shared<tecflix::QuotaClient>(
             quota_host, static_cast<int>(port), service_secret);
     }
+    std::string metadata_host;
+    int metadata_port = 0;
+    if (environment_variable("TECFLIX_ENABLE_METADATA_AUTH", "0") == "1") {
+        metadata_host = environment_variable("TECFLIX_METADATA_HOST", "127.0.0.1");
+        const auto port_string = environment_variable("TECFLIX_METADATA_PORT", "8082");
+        char* end = nullptr;
+        const long parsed = std::strtol(port_string.c_str(), &end, 10);
+        if (end == port_string.c_str() || *end != '\0' || parsed < 1 || parsed > 65535) {
+            std::cerr << "Invalid TECFLIX_METADATA_PORT\n";
+            return 1;
+        }
+        metadata_port = static_cast<int>(parsed);
+    }
     tecflix::VideoService videos(storage, worker_count,
-                                 std::move(transcoder), validator, quota_client);
+                                 std::move(transcoder), validator, quota_client,
+                                 metadata_host, metadata_port);
 
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);

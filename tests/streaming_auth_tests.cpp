@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -158,6 +159,75 @@ int main() {
         require(status(owner_segment, "owner segment") == 200 &&
                     owner_segment->body == "fake-ts-content",
                 "Owner can read HLS segment: 200");
+        // Cross-service policy: public media is readable by others/anonymous,
+        // private media only by its owner, including HLS segment URLs.
+        std::atomic<bool> public_visibility{true};
+        std::atomic<bool> mismatched_owner{false};
+        httplib::Server metadata_server;
+        metadata_server.Get(R"(/api/metadata/videos/([a-f0-9]{32}))",
+            [&](const httplib::Request& req, httplib::Response& res) {
+                if (!public_visibility &&
+                    req.get_header_value("Authorization") != "Bearer " + kTokenA) {
+                    res.status = 404; return;
+                }
+                res.set_content(nlohmann::json{
+                    {"id", req.matches[1].str()},
+                    {"owner_id", mismatched_owner ? "2" : "1"},
+                    {"visibility", public_visibility ? "public" : "private"}
+                }.dump(), "application/json");
+            });
+        const int metadata_port = metadata_server.bind_to_any_port("127.0.0.1");
+        require(metadata_port > 0, "Metadata mock binds");
+        std::thread metadata_thread([&] { metadata_server.listen_after_bind(); });
+        metadata_server.wait_until_ready();
+        {
+            tecflix::VideoService visible_videos(temp.path / "visible-videos", 1,
+                tecflix::FfmpegTranscoder(fake_ffmpeg.string()), validator, nullptr,
+                "127.0.0.1", metadata_port);
+            RunningServer visible_running(visible_videos);
+            httplib::Client visible_client("127.0.0.1", visible_running.port);
+            visible_client.set_read_timeout(5);
+            const auto created = visible_client.Post("/api/videos", bearer(kTokenA),
+                                                    body, "application/octet-stream");
+            require(status(created, "visibility upload") == 202, "Visibility upload: 202");
+            const auto visible_id = nlohmann::json::parse(created->body).at("id").get<std::string>();
+            const auto path = "/api/videos/" + visible_id;
+            const auto hls = path + "/index.m3u8";
+            const auto ts = path + "/segments/segment_00000.ts";
+            bool visible_ready = false;
+            for (int attempt = 0; attempt < 100; ++attempt) {
+                auto result = visible_client.Get(path, bearer(kTokenA));
+                if (status(result, "visibility status") == 200 &&
+                    nlohmann::json::parse(result->body).at("status") == "ready") {
+                    visible_ready = true; break;
+                }
+                std::this_thread::sleep_for(20ms);
+            }
+            require(visible_ready, "Visibility test transcode ready");
+            for (const auto& resource : {path, hls, ts}) {
+                require(status(visible_client.Get(resource), "public anonymous") == 200,
+                        "Public resource is accessible anonymously");
+                require(status(visible_client.Get(resource, bearer(kTokenB)), "public B") == 200,
+                        "Public resource is accessible to another user");
+            }
+            public_visibility = false;
+            for (const auto& resource : {path, hls, ts}) {
+                require(status(visible_client.Get(resource, bearer(kTokenA)), "private owner") == 200,
+                        "Owner retains private access");
+                require(status(visible_client.Get(resource, bearer(kTokenB)), "private B") == 403,
+                        "Other user cannot access private resource");
+                require(status(visible_client.Get(resource), "private anonymous") == 401,
+                        "Private resource requires authentication");
+            }
+            mismatched_owner = true;
+            require(status(visible_client.Get(path, bearer(kTokenA)), "mismatched owner") == 503,
+                    "Metadata owner mismatch is denied");
+            mismatched_owner = false;
+            metadata_server.stop();
+            require(status(visible_client.Get(hls, bearer(kTokenA)), "metadata offline") == 503,
+                    "Metadata outage fails closed");
+        }
+        metadata_thread.join();
         std::cout << "Streaming authorization tests passed.\n";
         return 0;
     } catch (const std::exception& error) {
