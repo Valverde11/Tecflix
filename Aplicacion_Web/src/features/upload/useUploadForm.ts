@@ -69,7 +69,7 @@ export function useUploadForm() {
       uploadAbort.current = controller;
       setProgress(0);
       const durationSeconds = await readVideoDuration(video);
-      const videoId = await streamingApi.uploadVideo(video, {
+      const { videoId, sizeBytes } = await streamingApi.uploadVideo(video, {
         onProgress: setProgress,
         signal: controller.signal,
       });
@@ -78,7 +78,7 @@ export function useUploadForm() {
           ...details,
           videoId,
           durationSeconds,
-          sizeBytes: video.size,
+          sizeBytes,
         });
       } catch (error) {
         // SPEC 3.3: sin metadata nadie vería el video y ocuparía espacio para siempre.

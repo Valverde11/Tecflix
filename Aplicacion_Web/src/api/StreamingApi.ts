@@ -8,8 +8,22 @@ function parseStatus(data: unknown): VideoStatus {
   return new JsonObject(data).oneOf('status', VIDEO_STATUSES);
 }
 
-function parseUploadedId(data: unknown): string {
-  return new JsonObject(data).string('id');
+export interface UploadedVideo {
+  readonly videoId: string;
+  readonly sizeBytes: number;
+}
+
+function parseUploadedVideo(data: unknown): UploadedVideo {
+  const json = new JsonObject(data);
+  const videoId = json.string('id');
+  const sizeBytes = json.number('size_bytes');
+  if (!/^[a-f0-9]{32}$/.test(videoId)) {
+    throw new Error('el campo "id" debe ser un identificador hexadecimal de 32 caracteres');
+  }
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
+    throw new Error('el campo "size_bytes" debe ser un entero positivo seguro');
+  }
+  return { videoId, sizeBytes };
 }
 
 function videoPath(videoId: string): string {
@@ -25,9 +39,9 @@ export class StreamingApi {
     this.baseUrl = baseUrl;
   }
 
-  /** Devuelve el `videoId` que generó streaming. */
-  uploadVideo(file: Blob, options: UploadOptions): Promise<string> {
-    return this.http.upload(VIDEOS_PATH, file, parseUploadedId, options);
+  /** Devuelve el ID y el tamaño original medido por streaming, no por el navegador. */
+  uploadVideo(file: Blob, options: UploadOptions): Promise<UploadedVideo> {
+    return this.http.upload(VIDEOS_PATH, file, parseUploadedVideo, options);
   }
 
   getStatus(videoId: string): Promise<VideoStatus> {
