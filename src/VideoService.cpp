@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -138,9 +139,17 @@ VideoService::VideoService(std::filesystem::path storage_directory,
     for (std::size_t i = 0; i < worker_count; ++i) {
         workers_.emplace_back([this] { worker_loop(); });
     }
+    // Revisit durable uncertain operations while the service remains running.
+    if (quota_client_) retry_thread_ = std::thread([this] { retry_loop(); });
 }
 
 VideoService::~VideoService() {
+    {
+        std::lock_guard<std::mutex> lock(retry_mutex_);
+        stop_retry_ = true;
+    }
+    retry_ready_.notify_all();
+    if (retry_thread_.joinable()) retry_thread_.join();
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         stopping_ = true;
@@ -276,6 +285,8 @@ void VideoService::save_record(const UploadRecord& record) {
 
 void VideoService::release_quota(const std::string& video_id) {
     if (!quota_client_) return;
+    // Prevent simultaneous release retries from a worker and recovery thread.
+    std::lock_guard<std::mutex> quota_lock(quota_action_mutex_);
     UploadRecord record;
     {
         std::lock_guard<std::mutex> lock(status_mutex_);
@@ -298,6 +309,95 @@ void VideoService::release_quota(const std::string& video_id) {
         save_record(record);
     }
     // Any other result stays release_pending for retry on next startup.
+}
+
+void VideoService::retry_pending_reservation(const std::string& video_id) {
+    if (!quota_client_) return;
+    UploadRecord record;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto it = records_.find(video_id);
+        if (it == records_.end() || it->second.quota_state != "pending" ||
+            it->second.status == "deleting") return;
+        record = it->second;
+    }
+    const auto result = quota_client_->Apply(record.owner_id,
+        record.quota_operation_id, static_cast<std::int64_t>(record.size_bytes));
+    if (result.outcome == QuotaClient::Outcome::uncertain) return;
+
+    bool should_enqueue = false;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex_);
+        const auto it = records_.find(video_id);
+        if (it == records_.end() || it->second.quota_state != "pending") return;
+        auto updated = it->second;
+        if (result.outcome == QuotaClient::Outcome::applied) {
+            updated.quota_state = "applied";
+            // The original upload remains on disk until the reservation is known.
+            // Without a source, compensate rather than claim a video is ready.
+            if (std::filesystem::exists(storage_directory_ / video_id / "source.bin")) {
+                updated.status = "queued";
+                should_enqueue = true;
+            } else {
+                updated.status = "failed";
+                updated.quota_state = "release_pending";
+            }
+        } else {
+            // Permanent rejection (quota exceeded, bad request, conflict, etc.).
+            // A rejected reservation must never be retried indefinitely.
+            updated.quota_state = "denied";
+            updated.status = "failed";
+        }
+        record_store_.Save(updated);
+        it->second = updated;
+        owners_[video_id] = updated.owner_id;
+        statuses_[video_id] = should_enqueue ? JobStatus::queued : JobStatus::failed;
+    }
+    if (should_enqueue && !enqueue(video_id)) {
+        // Queue unavailable: preserve the charged record and refund the quota.
+        set_status(video_id, JobStatus::failed);
+        release_quota(video_id);
+    }
+}
+
+void VideoService::retry_loop() {
+    using namespace std::chrono_literals;
+    for (;;) {
+        {
+            std::unique_lock<std::mutex> lock(retry_mutex_);
+            if (retry_ready_.wait_for(lock, 1s, [this] { return stop_retry_; })) return;
+        }
+        std::vector<std::string> pending_reserves;
+        std::vector<std::string> pending_releases;
+        std::vector<std::string> pending_deletions;
+        {
+            std::lock_guard<std::mutex> lock(status_mutex_);
+            for (const auto& pair : records_) {
+                const auto& record = pair.second;
+                if (record.status == "deleting") pending_deletions.push_back(pair.first);
+                else if (record.quota_state == "pending") pending_reserves.push_back(pair.first);
+                else if (record.quota_state == "release_pending") pending_releases.push_back(pair.first);
+            }
+        }
+        for (const auto& id : pending_reserves) {
+            try { retry_pending_reservation(id); } catch (const std::exception&) {
+                // Keep durable pending state; retry after the next interval.
+            }
+        }
+        for (const auto& id : pending_releases) {
+            try { release_quota(id); } catch (const std::exception&) {
+                // Do not forget a release whose outcome is unknown.
+            }
+        }
+        for (const auto& id : pending_deletions) {
+            try {
+                std::lock_guard<std::mutex> lock(deletion_mutex_);
+                finalize_deletion(id);
+            } catch (const std::exception&) {
+                // Tombstone remains recoverable.
+            }
+        }
+    }
 }
 
 // The tombstone must already be durable before this method runs. The result
@@ -453,8 +553,12 @@ void VideoService::upload(const httplib::Request& request,
             record.quota_operation_id, static_cast<std::int64_t>(received));
         if (result.outcome != QuotaClient::Outcome::applied) {
             if (result.outcome == QuotaClient::Outcome::uncertain) {
-                // Keep source.bin and the pending record. A restart can retry
-                // this exact operationId, never charging a second time.
+                // Keep source.bin and the pending record. The recovery worker
+                // retries the same operationId while streaming remains online.
+                {
+                    std::lock_guard<std::mutex> lock(status_mutex_);
+                    records_[video_id] = record;
+                }
                 response.status = 503;
                 response.set_content(std::string("{\"error\":\"quota_result_uncertain\",\"id\":\"") +
                                      video_id + "\"}", "application/json");

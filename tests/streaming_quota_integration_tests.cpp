@@ -297,6 +297,51 @@ int main() {
                     "Recovery retries same release id, never twice");
             }
         }
+        // An uncertain reserve must recover without restarting streaming.
+        // A lost successful response is not proof that the quota was rejected.
+        {
+            TempDir live_temp;
+            const auto ffmpeg = live_temp.path / "fake_ffmpeg_live.sh";
+            {
+                std::ofstream script(ffmpeg);
+                script << "#!/bin/sh\nfor last do :; done\n"
+                       << "printf '#EXTM3U\\n#EXT-X-ENDLIST\\n' > \"$last\"\n";
+            }
+            fs::permissions(ffmpeg, fs::perms::owner_exec, fs::perm_options::add);
+            FakeUsers live_users;
+            auto live_quota = std::make_shared<tecflix::QuotaClient>(
+                "127.0.0.1", live_users.port, "test-service-secret");
+            tecflix::VideoService videos(live_temp.path / "videos", 1,
+                tecflix::FfmpegTranscoder(ffmpeg.string()), validator, live_quota);
+            RunningStreaming running(videos);
+            httplib::Client client("127.0.0.1", running.port);
+            live_users.lose_next_success = true;
+            const auto uncertain = client.Post("/api/videos", bearer(kTokenA),
+                std::string(800, 'r'), "application/octet-stream");
+            require(status(uncertain) == 503,
+                "Lost quota response initially returns 503");
+            const auto live_id = nlohmann::json::parse(uncertain->body)
+                .at("id").get<std::string>();
+            require(wait_for(client, "/api/videos/" + live_id, "ready"),
+                "Pending reservation recovers online, no restart needed");
+            require(live_users.usage() == 800 && live_users.operation_count() == 1,
+                "Online reservation recovery reuses one operation ID");
+            live_users.lose_next_success = true;
+            const auto deletion = client.Delete("/api/videos/" + live_id, bearer(kTokenA));
+            require(status(deletion) == 202,
+                "Lost quota release leaves DELETE pending");
+            bool removed = false;
+            for (int i = 0; i < 200; ++i) {
+                if (!fs::exists(live_temp.path / "videos" / live_id)) {
+                    removed = true;
+                    break;
+                }
+                std::this_thread::sleep_for(25ms);
+            }
+            require(removed, "Pending deletion finishes online without restart");
+            require(live_users.usage() == 0 && live_users.operation_count() == 2,
+                "Online deletion recovery does not double-release quota");
+        }
         std::cout << "StreamingQuotaIntegration passed\n";
         return 0;
     } catch (const std::exception& error) {
