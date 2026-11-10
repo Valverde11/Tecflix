@@ -163,6 +163,38 @@ void VideoService::register_routes(httplib::Server& server) {
         response.set_content(R"({"status":"ok"})", "application/json");
     });
 
+    server.set_pre_routing_handler(
+        [](const httplib::Request& req, httplib::Response& res) {
+            const std::string origin = req.get_header_value("Origin");
+    
+            const bool allowed =
+                origin == "http://localhost:5173" ||
+                origin == "http://127.0.0.1:5173";
+    
+            if (allowed) {
+                res.set_header("Access-Control-Allow-Origin", origin);
+                res.set_header("Vary", "Origin");
+    
+                res.set_header(
+                    "Access-Control-Allow-Methods",
+                    "GET, POST, DELETE, OPTIONS"
+                );
+    
+                res.set_header(
+                    "Access-Control-Allow-Headers",
+                    "Authorization, Content-Type"
+                );
+            }
+    
+            if (req.method == "OPTIONS") {
+                res.status = allowed ? 204 : 403;
+                return httplib::Server::HandlerResponse::Handled;
+            }
+    
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+    );
+
     server.Post("/api/videos", [this](const httplib::Request& request,
                                       httplib::Response& response,
                                       const httplib::ContentReader& read_body) {
