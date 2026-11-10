@@ -54,6 +54,8 @@ private:
     std::optional<JobStatus> find_status(const std::string& video_id) const;
     void set_status(const std::string& video_id, JobStatus status);
     void release_quota(const std::string& video_id);
+    void retry_pending_reservation(const std::string& video_id);
+    void retry_loop();
     bool finalize_deletion(const std::string& video_id);
     void delete_video(const httplib::Request& request, httplib::Response& response,
                       const std::string& video_id);
@@ -68,6 +70,11 @@ private:
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;
     std::mutex deletion_mutex_;
+    std::mutex quota_action_mutex_;
+    std::mutex retry_mutex_;
+    std::condition_variable retry_ready_;
+    bool stop_retry_ = false;
+    std::thread retry_thread_;
     std::unordered_map<std::string, JobStatus> statuses_;
     std::unordered_map<std::string, std::uint64_t> owners_;
     std::mutex queue_mutex_;
