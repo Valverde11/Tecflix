@@ -58,6 +58,34 @@ TEST_F(CatalogServiceTest, CreateRechazaDuplicadosEInvalidos) {
   EXPECT_FALSE(repository_.FindById(Id(2)).has_value());
 }
 
+TEST_F(CatalogServiceTest, CreateReintentoIdenticoDevuelveRegistroOriginal) {
+  auto request = Request(1, "Hola", Visibility::kPrivate);
+  request.description = "ejemplo";
+  request.tags = {"demo"};
+  const Video original = service_.Create(alice_, request);
+  Advance();
+  const Video retry = service_.Create(alice_, request);
+  EXPECT_EQ(retry.id, original.id);
+  EXPECT_EQ(retry.uploaded_at, original.uploaded_at);
+  EXPECT_EQ(retry.updated_at, original.updated_at);
+  EXPECT_EQ(service_.List(alice_, VideoQuery{}).total, 1);
+}
+
+TEST_F(CatalogServiceTest, CreateReintentoConCambiosDaConflicto) {
+  auto request = Request(1, "Hola");
+  service_.Create(alice_, request);
+  request.size_bytes = 11;
+  EXPECT_EQ(ErrorCodeOf([&] { service_.Create(alice_, request); }),
+            "video_already_exists");
+  request.size_bytes = 10;
+  request.title = "Distinto";
+  EXPECT_EQ(ErrorCodeOf([&] { service_.Create(alice_, request); }),
+            "video_already_exists");
+  request.title = "Hola";
+  EXPECT_EQ(ErrorCodeOf([&] { service_.Create(bob_, request); }),
+            "video_already_exists");
+}
+
 TEST_F(CatalogServiceTest, GetRespetaLaVisibilidad) {
   service_.Create(alice_, Request(1, "publico"));
   service_.Create(alice_, Request(2, "privado", Visibility::kPrivate));

@@ -13,6 +13,19 @@ std::optional<std::string> ViewerId(const std::optional<Identity>& viewer) {
   return viewer->id;
 }
 
+// El ID de streaming identifica una única creación lógica. Un reintento debe
+// coincidir con el propietario y todos los campos aportados en el POST.
+// No comparamos fechas, porque pertenecen al registro original persistido.
+bool MatchesCreate(const Video& stored, const Video& candidate) {
+  return stored.id == candidate.id && stored.owner_id == candidate.owner_id &&
+         stored.owner_name == candidate.owner_name && stored.title == candidate.title &&
+         stored.description == candidate.description && stored.topic == candidate.topic &&
+         stored.tags == candidate.tags && stored.duration_seconds == candidate.duration_seconds &&
+         stored.size_bytes == candidate.size_bytes &&
+         stored.visibility == candidate.visibility && stored.genres == candidate.genres &&
+         stored.release_year == candidate.release_year && stored.cast == candidate.cast;
+}
+
 void ApplyPatch(const VideoPatch& patch, Video& video) {
   if (patch.title) video.title = *patch.title;
   if (patch.description) video.description = *patch.description;
@@ -50,8 +63,19 @@ Video CatalogService::Create(const Identity& user, const CreateVideoRequest& req
   video.updated_at = video.uploaded_at;
 
   ValidateVideo(video);
-  if (!repository_.Insert(video)) throw CatalogError::Conflict();
-  return video;
+  // Comprobar primero el recurso existente permite responder al reintento sin
+  // modificar su fecha original. Insert sigue siendo la operación atómica en
+  // el repositorio: si dos solicitudes corren a la vez, el perdedor compara
+  // el registro que ganó la inserción.
+  if (const auto existing = repository_.FindById(video.id)) {
+    if (MatchesCreate(*existing, video)) return *existing;
+    throw CatalogError::Conflict();
+  }
+  if (repository_.Insert(video)) return video;
+  if (const auto existing = repository_.FindById(video.id)) {
+    if (MatchesCreate(*existing, video)) return *existing;
+  }
+  throw CatalogError::Conflict();
 }
 
 Video CatalogService::Get(const std::optional<Identity>& viewer,
