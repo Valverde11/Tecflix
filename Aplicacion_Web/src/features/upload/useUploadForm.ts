@@ -1,11 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { ApiError } from '../../api/ApiError';
+import { ApiError, NETWORK_ERROR_STATUS } from '../../api/ApiError';
+import type { MetadataApi } from '../../api/MetadataApi';
 import { UPLOAD_CANCELLED } from '../../api/HttpClient';
 import { useForm } from '../../hooks/useForm';
 import { useServices } from '../../hooks/useServices';
-import type { Video, VideoDetails, Visibility } from '../../types/video';
+import type { NewVideo, Video, VideoDetails, Visibility } from '../../types/video';
 import {
   EMPTY_VIDEO_FIELDS,
   findVideoErrors,
@@ -44,6 +45,55 @@ function findFileError(file: File | null, availableBytes: number): string | null
     : null;
 }
 
+/** Un timeout, un 5xx o una respuesta ilegible no demuestra que MongoDB rechazó el alta. */
+function isAmbiguousCreateFailure(error: unknown): boolean {
+  return !(error instanceof ApiError) ||
+    error.status === NETWORK_ERROR_STATUS || error.status === 409 || error.status >= 500 ||
+    error.code === 'invalid_response';
+}
+
+function matchesCreateRequest(saved: Video, expected: NewVideo): boolean {
+  return saved.videoId === expected.videoId &&
+    saved.title === expected.title &&
+    saved.description === expected.description &&
+    saved.topic === expected.topic &&
+    saved.visibility === expected.visibility &&
+    saved.durationSeconds === expected.durationSeconds &&
+    saved.sizeBytes === expected.sizeBytes &&
+    saved.tags.length === expected.tags.length &&
+    saved.tags.every((tag, index) => tag === expected.tags[index]);
+}
+
+/** Solo repetir el POST de metadata: streaming no acepta un segundo POST idempotente de archivo. */
+async function createMetadataWithReconciliation(api: MetadataApi, input: NewVideo): Promise<Video> {
+  try {
+    return await api.createVideo(input);
+  } catch (originalError) {
+    if (!isAmbiguousCreateFailure(originalError)) throw originalError;
+  }
+
+  // El endpoint de metadata es idempotente para el mismo videoId y el mismo cuerpo.
+  try {
+    return await api.createVideo(input);
+  } catch {
+    // El segundo POST también pudo aplicarse sin que llegara la respuesta.
+  }
+
+  try {
+    const saved = await api.getVideo(input.videoId);
+    if (matchesCreateRequest(saved, input)) return saved;
+  } catch {
+    // Un 404, un 403 o una caída de metadata no autorizan a borrar streaming.
+  }
+
+  throw new ApiError(
+    503,
+    'metadata_result_uncertain',
+    `No se pudo confirmar el registro en metadata. Conserva el video ${input.videoId} ` +
+      'y no vuelvas a subir el archivo; será necesario reconciliarlo.',
+  );
+}
+
 interface UploadInput {
   readonly file: File;
   readonly details: VideoDetails;
@@ -74,16 +124,28 @@ export function useUploadForm() {
         signal: controller.signal,
       });
       try {
-        return await metadataApi.createVideo({
+        return await createMetadataWithReconciliation(metadataApi, {
           ...details,
           videoId,
           durationSeconds,
           sizeBytes,
         });
       } catch (error) {
-        // SPEC 3.3: sin metadata nadie vería el video y ocuparía espacio para siempre.
-        // Si deshacer también falla, a la persona le sirve más saber el error original.
-        await streamingApi.deleteVideo(videoId).catch(() => undefined);
+        // Cuando no sabemos si metadata confirmó el alta, NUNCA borrar el archivo.
+        // Borrarlo podría dejar un registro de catálogo que apunta a contenido inexistente.
+        if (error instanceof ApiError && error.code === 'metadata_result_uncertain') {
+          throw error;
+        }
+        try {
+          await streamingApi.deleteVideo(videoId);
+        } catch {
+          throw new ApiError(
+            503,
+            'upload_cleanup_failed',
+            `${error instanceof Error ? error.message : 'Error al crear metadata'}. ` +
+              `No se pudo deshacer la subida ${videoId}; requiere limpieza manual.`,
+          );
+        }
         throw error;
       }
     },
