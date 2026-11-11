@@ -2,8 +2,8 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TEST_API_CONFIG, testSession, testUser, UPLOADED_VIDEO_ID } from '../../test/fixtures';
-import { CORS_HEADERS, videoStore } from '../../test/handlers';
+import { TEST_API_CONFIG, testSession, testUser, testVideo, UPLOADED_VIDEO_ID } from '../../test/fixtures';
+import { CORS_HEADERS, toMetadataJson, videoStore } from '../../test/handlers';
 import { renderApp } from '../../test/renderApp';
 import { server } from '../../test/server';
 
@@ -224,11 +224,11 @@ describe('UploadPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('deshace la subida si no se pudo crear la metadata', async () => {
+  it('deshace la subida si metadata rechaza definitivamente la creación', async () => {
     let deletedPath = '';
     server.use(
       http.post(METADATA_URL, () =>
-        HttpResponse.json({ error: 'x', message: 'Falló Mongo' }, { status: 503 }),
+        HttpResponse.json({ error: 'bad_request', message: 'Datos inválidos' }, { status: 422 }),
       ),
       http.delete(`${UPLOAD_URL}/:videoId`, ({ request }) => {
         deletedPath = new URL(request.url).pathname;
@@ -240,14 +240,114 @@ describe('UploadPage', () => {
 
     await clickUpload();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Falló Mongo');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Datos inválidos');
     expect(deletedPath).toBe(`/api/videos/${UPLOADED_VIDEO_ID}`);
+  });
+
+  it('recupera un alta aplicada cuando se pierde la primera respuesta de metadata', async () => {
+    let posts = 0;
+    let deletes = 0;
+    server.use(
+      http.post(METADATA_URL, async ({ request }) => {
+        posts += 1;
+        if (posts === 1) {
+          const body = (await request.json()) as { id: string };
+          expect(body.id).toBe(UPLOADED_VIDEO_ID);
+          // Simula un commit en MongoDB seguido de una respuesta HTTP perdida.
+          videoStore.add({
+            ...testVideo,
+            videoId: UPLOADED_VIDEO_ID,
+            title: 'Clase de árboles',
+            description: '',
+            topic: '',
+            tags: [],
+            visibility: 'private',
+            durationSeconds: DURATION_SECONDS,
+            sizeBytes: video.size,
+          });
+          return HttpResponse.error();
+        }
+        // El segundo POST idempotente devuelve el recurso creado por el backend.
+        const saved = videoStore.find(UPLOADED_VIDEO_ID);
+        if (saved === undefined) {
+          return HttpResponse.json({ error: 'temporary' }, { status: 503 });
+        }
+        return HttpResponse.json(toMetadataJson(saved), { status: 201 });
+      }),
+      http.delete(`${UPLOAD_URL}/:videoId`, () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+    expect(await screen.findByRole('link', { name: 'Volver a los videos' })).toBeInTheDocument();
+    expect(posts).toBe(2);
+    expect(deletes).toBe(0);
+  });
+
+  it('consulta metadata cuando el POST repetido tampoco devuelve resultado', async () => {
+    let posts = 0;
+    let deletes = 0;
+    server.use(
+      http.post(METADATA_URL, () => {
+        posts += 1;
+        if (posts === 1) {
+          videoStore.add({
+            ...testVideo,
+            videoId: UPLOADED_VIDEO_ID,
+            title: 'Clase de árboles',
+            description: '',
+            topic: '',
+            tags: [],
+            visibility: 'private',
+            durationSeconds: DURATION_SECONDS,
+            sizeBytes: video.size,
+          });
+          return HttpResponse.error();
+        }
+        return HttpResponse.json({ error: 'temporarily_unavailable' }, { status: 503 });
+      }),
+      http.delete(`${UPLOAD_URL}/:videoId`, () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+    expect(await screen.findByRole('link', { name: 'Volver a los videos' })).toBeInTheDocument();
+    expect(posts).toBe(2);
+    expect(deletes).toBe(0);
+  });
+
+  it('no borra streaming si ambos POST de metadata quedan inciertos', async () => {
+    let posts = 0;
+    let deletes = 0;
+    server.use(
+      http.post(METADATA_URL, () => {
+        posts += 1;
+        return HttpResponse.json({ error: 'unavailable' }, { status: 503 });
+      }),
+      http.get(`${METADATA_URL}/:videoId`, () => HttpResponse.error()),
+      http.delete(`${UPLOAD_URL}/:videoId`, () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+    expect(await screen.findByRole('alert')).toHaveTextContent(UPLOADED_VIDEO_ID);
+    expect(posts).toBe(2);
+    expect(deletes).toBe(0);
   });
 
   it('muestra el error original aunque deshacer también falle', async () => {
     server.use(
       http.post(METADATA_URL, () =>
-        HttpResponse.json({ error: 'x', message: 'Falló Mongo' }, { status: 503 }),
+        HttpResponse.json({ error: 'bad_request', message: 'Falló Mongo' }, { status: 422 }),
       ),
       http.delete(`${UPLOAD_URL}/:videoId`, () => HttpResponse.error()),
     );
