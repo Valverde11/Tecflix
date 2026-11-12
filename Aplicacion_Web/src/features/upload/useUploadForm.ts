@@ -1,4 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
+import { useAuth } from '../auth/useAuth';
+import { clearPendingMetadata, loadPendingMetadata, savePendingMetadata } from './pendingMetadata';
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError, NETWORK_ERROR_STATUS } from '../../api/ApiError';
@@ -101,6 +103,9 @@ interface UploadInput {
 
 export function useUploadForm() {
   const { streamingApi, metadataApi, queryClient } = useServices();
+  const { user } = useAuth();
+  const ownerId = user?.id ?? null;
+  const [pending, setPending] = useState(() => ownerId === null ? null : loadPendingMetadata(ownerId));
   const navigate = useNavigate();
   const { data: quota } = useQuota();
   const form = useForm<VideoField>(EMPTY_VIDEO_FIELDS, findVideoErrors);
@@ -109,6 +114,11 @@ export function useUploadForm() {
   const [visibility, setVisibility] = useState<Visibility>('private');
   const [progress, setProgress] = useState(0);
   const uploadAbort = useRef<AbortController | null>(null);
+  const autoRecoveryStarted = useRef(false);
+
+  useEffect(() => {
+    setPending(ownerId === null ? null : loadPendingMetadata(ownerId));
+  }, [ownerId]);
 
   // Salir de la página no debe dejar una subida corriendo sin que nadie la vea.
   useEffect(() => () => uploadAbort.current?.abort(), []);
@@ -123,13 +133,23 @@ export function useUploadForm() {
         onProgress: setProgress,
         signal: controller.signal,
       });
+      const input: NewVideo = { ...details, videoId, durationSeconds, sizeBytes };
+      // Guardar ANTES de crear metadata: el navegador puede cerrarse durante el POST.
       try {
-        return await createMetadataWithReconciliation(metadataApi, {
-          ...details,
-          videoId,
-          durationSeconds,
-          sizeBytes,
-        });
+        if (ownerId === null) throw new Error('No hay sesión activa');
+        savePendingMetadata(ownerId, input);
+        autoRecoveryStarted.current = true;
+        setPending(loadPendingMetadata(ownerId));
+      } catch {
+        throw new ApiError(503, 'pending_storage_unavailable',
+          `La subida ${videoId} fue aceptada, pero no se pudo guardar su recuperación local. ` +
+          'Conserva este ID y no repitas la subida.');
+      }
+      try {
+        const result = await createMetadataWithReconciliation(metadataApi, input);
+        if (ownerId !== null) clearPendingMetadata(ownerId, videoId);
+        setPending(null);
+        return result;
       } catch (error) {
         // Cuando no sabemos si metadata confirmó el alta, NUNCA borrar el archivo.
         // Borrarlo podría dejar un registro de catálogo que apunta a contenido inexistente.
@@ -138,6 +158,8 @@ export function useUploadForm() {
         }
         try {
           await streamingApi.deleteVideo(videoId);
+          if (ownerId !== null) clearPendingMetadata(ownerId, videoId);
+          setPending(null);
         } catch {
           throw new ApiError(
             503,
@@ -158,6 +180,34 @@ export function useUploadForm() {
     },
   });
 
+  const recovery = useMutation({
+    mutationFn: async (): Promise<Video> => {
+      if (ownerId === null) throw new Error('No hay sesión activa');
+      const current = loadPendingMetadata(ownerId);
+      if (current === null) throw new Error('No hay ninguna subida pendiente');
+      // NO se vuelve a subir el archivo. Se reutiliza exactamente el mismo videoId.
+      const video = await createMetadataWithReconciliation(metadataApi, current.input);
+      clearPendingMetadata(ownerId, current.input.videoId);
+      setPending(null);
+      return video;
+    },
+    onSuccess: async (video) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['videos'] }),
+        queryClient.invalidateQueries({ queryKey: [QUOTA_QUERY_KEY] }),
+      ]);
+      await navigate(`/videos/${video.videoId}`);
+    },
+  });
+
+  // Al volver a /upload se reintenta una sola vez por montaje (StrictMode incluido).
+  useEffect(() => {
+    if (ownerId === null || pending === null || pending.ownerId !== ownerId ||
+        autoRecoveryStarted.current || upload.isPending) return;
+    autoRecoveryStarted.current = true;
+    recovery.mutate();
+  }, [ownerId, pending, recovery.mutate, upload.isPending]);
+
   // Si la cuota no se conoce no se sube: el enunciado prohíbe superarla.
   const availableBytes = quota === undefined ? null : quota.quotaBytes - quota.usedBytes;
 
@@ -168,7 +218,12 @@ export function useUploadForm() {
     visibility,
     progress,
     isUploading: upload.isPending,
-    canUpload: availableBytes !== null && availableBytes > 0,
+    canUpload: availableBytes !== null && availableBytes > 0 && pending === null,
+    pendingRecovery: pending,
+    isRecovering: recovery.isPending,
+    recoveryError: recovery.error === null ? null :
+      recovery.error instanceof Error ? recovery.error.message : 'No se pudo recuperar metadata',
+    retryRecovery: () => recovery.mutate(),
     isQuotaKnown: availableBytes !== null,
     formError:
       upload.error === null || isCancelled(upload.error) ? null : describeUploadError(upload.error),
@@ -185,7 +240,7 @@ export function useUploadForm() {
     },
     submit: (event: SyntheticEvent) => {
       event.preventDefault();
-      if (availableBytes === null) {
+      if (availableBytes === null || pending !== null) {
         return;
       }
       const problem = findFileError(file, availableBytes);

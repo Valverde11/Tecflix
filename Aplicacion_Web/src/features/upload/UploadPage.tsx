@@ -29,6 +29,19 @@ export function UploadPage() {
     <div className={styles.page}>
       <h1>Subir video</h1>
       <QuotaMeter />
+      {upload.pendingRecovery !== null && (
+        <section role="status" className={styles.progress}>
+          <p>
+            Hay una subida pendiente de registrar en metadata: <code>{upload.pendingRecovery.input.videoId}</code>.
+            No vuelvas a subir ese archivo. Esta operación pertenece a tu cuenta.
+          </p>
+          {upload.recoveryError !== null && <p className={styles.formError}>{upload.recoveryError}</p>}
+          <button type="button" className={styles.secondary}
+            disabled={upload.isRecovering} onClick={upload.retryRecovery}>
+            {upload.isRecovering ? 'Recuperando metadata…' : 'Reintentar registro pendiente'}
+          </button>
+        </section>
+      )}
       {upload.isQuotaKnown && !upload.canUpload && (
         <p role="alert" className={styles.formError}>
           Llegaste al límite de tu espacio. Borra un video para subir otro.
