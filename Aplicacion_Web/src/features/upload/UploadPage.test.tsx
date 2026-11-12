@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,6 +39,7 @@ function clickUpload() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   serveQuota(1000, 0);
 });
 
@@ -342,6 +343,73 @@ describe('UploadPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(UPLOADED_VIDEO_ID);
     expect(posts).toBe(2);
     expect(deletes).toBe(0);
+  });
+
+  it('guarda la operación incierta, la recupera después de recargar y no repite la subida', async () => {
+    let metadataPosts = 0;
+    let streamingPosts = 0;
+    server.use(
+      http.post(UPLOAD_URL, () => {
+        streamingPosts += 1;
+        return HttpResponse.json(
+          { id: UPLOADED_VIDEO_ID, status: 'queued', size_bytes: video.size },
+          { status: 202, headers: CORS_HEADERS },
+        );
+      }),
+      http.post(METADATA_URL, () => {
+        metadataPosts += 1;
+        if (metadataPosts <= 2) {
+          return HttpResponse.json({ error: 'unavailable' }, { status: 503 });
+        }
+        videoStore.add({
+          ...testVideo,
+          videoId: UPLOADED_VIDEO_ID,
+          title: 'Clase de árboles',
+          description: '',
+          topic: '',
+          tags: [],
+          visibility: 'private',
+          durationSeconds: DURATION_SECONDS,
+          sizeBytes: video.size,
+        });
+        return HttpResponse.json(toMetadataJson(videoStore.find(UPLOADED_VIDEO_ID)!), { status: 201 });
+      }),
+      http.get(`${METADATA_URL}/:videoId`, () => HttpResponse.error()),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+    expect(await screen.findByRole('alert')).toHaveTextContent(UPLOADED_VIDEO_ID);
+    expect(screen.getByText(/Hay una subida pendiente/)).toBeInTheDocument();
+    expect(streamingPosts).toBe(1);
+    expect(window.localStorage.getItem(`tecflix.pending-metadata.v1.${String(testUser.id)}`))
+      .toContain(UPLOADED_VIDEO_ID);
+
+    // Simula una recarga: no volvemos a seleccionar ni enviar el archivo.
+    cleanup();
+    await renderUploadPage();
+    expect(await screen.findByRole('link', { name: 'Volver a los videos' })).toBeInTheDocument();
+    expect(streamingPosts).toBe(1);
+    expect(metadataPosts).toBe(3);
+    expect(window.localStorage.getItem(`tecflix.pending-metadata.v1.${String(testUser.id)}`))
+      .toBeNull();
+  });
+
+  it('conserva una recuperación no resuelta y bloquea otra subida', async () => {
+    server.use(
+      http.post(METADATA_URL, () => HttpResponse.json({ error: 'unavailable' }, { status: 503 })),
+      http.get(`${METADATA_URL}/:videoId`, () => HttpResponse.error()),
+    );
+    await renderUploadPage();
+    await chooseFile();
+    await clickUpload();
+    expect(await screen.findByRole('alert')).toHaveTextContent(UPLOADED_VIDEO_ID);
+    expect(screen.getByRole('button', { name: 'Subir video' })).toBeDisabled();
+    cleanup();
+    await renderUploadPage();
+    expect(await screen.findByRole('button', { name: 'Reintentar registro pendiente' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subir video' })).toBeDisabled();
   });
 
   it('muestra el error original aunque deshacer también falle', async () => {
