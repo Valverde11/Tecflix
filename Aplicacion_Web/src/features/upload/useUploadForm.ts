@@ -116,10 +116,6 @@ export function useUploadForm() {
   const uploadAbort = useRef<AbortController | null>(null);
   const autoRecoveryStarted = useRef(false);
 
-  useEffect(() => {
-    setPending(ownerId === null ? null : loadPendingMetadata(ownerId));
-  }, [ownerId]);
-
   // Salir de la página no debe dejar una subida corriendo sin que nadie la vea.
   useEffect(() => () => uploadAbort.current?.abort(), []);
 
@@ -147,7 +143,7 @@ export function useUploadForm() {
       }
       try {
         const result = await createMetadataWithReconciliation(metadataApi, input);
-        if (ownerId !== null) clearPendingMetadata(ownerId, videoId);
+        clearPendingMetadata(ownerId, videoId);
         setPending(null);
         return result;
       } catch (error) {
@@ -158,7 +154,7 @@ export function useUploadForm() {
         }
         try {
           await streamingApi.deleteVideo(videoId);
-          if (ownerId !== null) clearPendingMetadata(ownerId, videoId);
+          clearPendingMetadata(ownerId, videoId);
           setPending(null);
         } catch {
           throw new ApiError(
@@ -201,12 +197,16 @@ export function useUploadForm() {
   });
 
   // Al volver a /upload se reintenta una sola vez por montaje (StrictMode incluido).
+  const { mutate: recoverPendingMetadata } = recovery;
   useEffect(() => {
-    if (ownerId === null || pending === null || pending.ownerId !== ownerId ||
-        autoRecoveryStarted.current || upload.isPending) return;
+    if (ownerId === null ||
+       pending === null || 
+       pending.ownerId !== ownerId ||
+      autoRecoveryStarted.current || 
+      upload.isPending) return;
     autoRecoveryStarted.current = true;
-    recovery.mutate();
-  }, [ownerId, pending, recovery.mutate, upload.isPending]);
+    recoverPendingMetadata();
+  }, [ownerId, pending, recoverPendingMetadata, upload.isPending]);
 
   // Si la cuota no se conoce no se sube: el enunciado prohíbe superarla.
   const availableBytes = quota === undefined ? null : quota.quotaBytes - quota.usedBytes;
@@ -223,8 +223,9 @@ export function useUploadForm() {
     isRecovering: recovery.isPending,
     recoveryError: recovery.error === null ? null :
       recovery.error instanceof Error ? recovery.error.message : 'No se pudo recuperar metadata',
-    retryRecovery: () => recovery.mutate(),
+    retryRecovery: () => {recovery.mutate();},
     isQuotaKnown: availableBytes !== null,
+    isQuotaExhausted: availableBytes !== null && availableBytes <= 0,
     formError:
       upload.error === null || isCancelled(upload.error) ? null : describeUploadError(upload.error),
     changeVisibility: setVisibility,

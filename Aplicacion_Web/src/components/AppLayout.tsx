@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router';
 import { useAuth } from '../features/auth/useAuth';
+import { PendingDeletionRecovery } from '../features/videos/PendingDeletionRecovery';
 import styles from './AppLayout.module.css';
 
 export function AppLayout() {
@@ -22,6 +23,7 @@ export function AppLayout() {
         </button>
       </header>
       <main className={styles.content}>
+        <PendingDeletionRecovery key={user?.id ?? 'anonymous'}/>
         <Outlet />
       </main>
     </div>

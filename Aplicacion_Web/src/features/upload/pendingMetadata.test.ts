@@ -12,7 +12,7 @@ const input = {
   sizeBytes: 1024,
 };
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {window.localStorage.clear();});
 
 describe('pendingMetadata', () => {
   it('sobrevive a una nueva lectura y no contiene credenciales ni archivo', () => {
@@ -26,8 +26,7 @@ describe('pendingMetadata', () => {
   it('aísla cada cuenta y rechaza un segundo registro de la misma cuenta', () => {
     savePendingMetadata(7, input);
     expect(loadPendingMetadata(8)).toBeNull();
-    expect(() => savePendingMetadata(7, { ...input, videoId: 'b'.repeat(32) }))
-      .toThrow('Ya existe una subida pendiente');
+      expect(() => {savePendingMetadata(7, {...input, videoId: 'b'.repeat(32),});}).toThrow('Ya existe una subida pendiente');
   });
 
   it('solo limpia el identificador esperado', () => {
