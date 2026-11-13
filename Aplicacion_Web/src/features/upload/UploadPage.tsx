@@ -3,6 +3,7 @@ import { formatBytes } from './formatBytes';
 import { QuotaMeter } from './QuotaMeter';
 import styles from './UploadPage.module.css';
 import { useUploadForm } from './useUploadForm';
+import { useAuth } from '../auth/useAuth';
 
 const PERCENT = 100;
 
@@ -21,7 +22,7 @@ function UploadProgress({ progress, onCancel }: { progress: number; onCancel: ()
   );
 }
 
-export function UploadPage() {
+function UploadPageContent() {
   const upload = useUploadForm();
   const { form, file, fileError, visibility, formError } = upload;
 
@@ -42,9 +43,9 @@ export function UploadPage() {
           </button>
         </section>
       )}
-      {upload.isQuotaKnown && !upload.canUpload && (
+      {upload.isQuotaExhausted && (
         <p role="alert" className={styles.formError}>
-          Llegaste al límite de tu espacio. Borra un video para subir otro.
+          Llegaste al límite de tu espacio
         </p>
       )}
       <form className={styles.form} onSubmit={upload.submit} noValidate>
@@ -111,5 +112,13 @@ export function UploadPage() {
         )}
       </form>
     </div>
+  );
+}
+
+export function UploadPage() {
+  const { user } = useAuth();
+
+  return (
+    <UploadPageContent key={user?.id ?? 'anonymous'} />
   );
 }

@@ -104,6 +104,28 @@ describe('HttpClient', () => {
     expect(lastRequest().init.method).toBe('DELETE');
   });
 
+  it('no considera completado un DELETE que devuelve 202', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(202, { status: 'deletion_pending' }),
+    );
+
+    const error = await captureError(clientWith(TOKEN).delete('/api/videos/abc'));
+
+    expect(error).toMatchObject({ status: 202, code: 'deletion_pending' });
+    expect(lastRequest().init.method).toBe('DELETE');
+  });
+
+  it('no considera completado un DELETE que devuelve 202', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(202, { status: 'deletion_pending' }),
+    );
+
+    const error = await captureError(clientWith(TOKEN).delete('/api/videos/abc'));
+
+    expect(error).toMatchObject({ status: 202, code: 'deletion_pending' });
+    expect(lastRequest().init.method).toBe('DELETE');
+  });
+
   it('traduce el error común de la API', async () => {
     const body = { error: 'username_taken', message: 'Ya existe' };
     fetchMock.mockResolvedValue(jsonResponse(409, body));

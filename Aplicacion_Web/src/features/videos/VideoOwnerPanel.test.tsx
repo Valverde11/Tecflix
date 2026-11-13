@@ -1,11 +1,12 @@
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_API_CONFIG, testSession, testUser, testVideo } from '../../test/fixtures';
 import { videoStore } from '../../test/handlers';
 import { renderApp } from '../../test/renderApp';
 import { server } from '../../test/server';
+import { getPendingDeletions } from './pendingDeletion';
 
 const VIDEO_URL = `${TEST_API_CONFIG.metadataApiUrl}/api/metadata/videos/${testVideo.videoId}`;
 const VIDEO_PATH = `/videos/${testVideo.videoId}`;
@@ -178,6 +179,7 @@ describe('VideoOwnerPanel', () => {
   });
 
   describe('eliminar', () => {
+    beforeEach(() => {window.localStorage.clear()});
     const STREAMING_URL = `${TEST_API_CONFIG.streamingApiUrl}/api/videos/${testVideo.videoId}`;
 
     function trackDeletes() {
@@ -286,6 +288,52 @@ describe('VideoOwnerPanel', () => {
 
       expect(await screen.findByRole('heading', { name: 'Videos' })).toBeInTheDocument();
       expect(streamingCalls).toBe(2);
+    });
+
+    it('recupera tras recargar si metadata se borró y streaming devolvió 503', async () => {
+      let streamingCalls = 0;
+      let metadataCalls = 0;
+      server.use(
+        http.delete(VIDEO_URL, () => {
+          metadataCalls += 1;
+          const exists = videoStore.find(testVideo.videoId) !== undefined;
+          videoStore.remove(testVideo.videoId);
+          return exists ? new HttpResponse(null, { status: 204 })
+            : HttpResponse.json({ error: 'video_not_found' }, { status: 404 });
+        }),
+        http.delete(STREAMING_URL, () => {
+          streamingCalls += 1;
+          return streamingCalls === 1
+            ? HttpResponse.json({ error: 'unavailable', message: 'Streaming fuera de servicio' }, { status: 503 })
+            : new HttpResponse(null, { status: 204 });
+        }),
+      );
+      await renderDetail();
+      await clickButton('Eliminar video');
+      await clickButton('Sí, eliminar');
+      expect(await screen.findByRole('alert')).toHaveTextContent('Streaming fuera de servicio');
+      expect(getPendingDeletions(testUser.id)).toEqual([testVideo.videoId]);
+
+      // Recarga en /videos: ya no hay página de detalle ni botón de eliminar.
+      cleanup();
+      renderApp('/videos', testSession);
+      await waitFor(() =>{expect(getPendingDeletions(testUser.id)).toEqual([]);});
+      expect(metadataCalls).toBe(2);
+      expect(streamingCalls).toBe(2);
+    });
+
+    it('no reintenta la eliminación de otra cuenta', async () => {
+      const { addPendingDeletion } = await import('./pendingDeletion');
+      let streamingCalls = 0;
+      addPendingDeletion(testUser.id + 1, testVideo.videoId);
+      server.use(http.delete(STREAMING_URL, () => {
+        streamingCalls += 1;
+        return new HttpResponse(null, { status: 204 });
+      }));
+      renderApp('/videos', testSession);
+      await screen.findByRole('heading', { name: 'Videos' });
+      expect(streamingCalls).toBe(0);
+      expect(getPendingDeletions(testUser.id + 1)).toEqual([testVideo.videoId]);
     });
 
     it('explica si metadata no permite borrar y no sigue con streaming', async () => {

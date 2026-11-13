@@ -372,7 +372,14 @@ describe('UploadPage', () => {
           durationSeconds: DURATION_SECONDS,
           sizeBytes: video.size,
         });
-        return HttpResponse.json(toMetadataJson(videoStore.find(UPLOADED_VIDEO_ID)!), { status: 201 });
+
+        const savedVideo = videoStore.find(UPLOADED_VIDEO_ID);
+
+        if (savedVideo == undefined) {
+          throw new Error('No se encontró el video de prueba');
+        }
+
+        return HttpResponse.json(toMetadataJson(savedVideo), { status: 201 });
       }),
       http.get(`${METADATA_URL}/:videoId`, () => HttpResponse.error()),
     );
@@ -405,6 +412,7 @@ describe('UploadPage', () => {
     await clickUpload();
     expect(await screen.findByRole('alert')).toHaveTextContent(UPLOADED_VIDEO_ID);
     expect(screen.getByRole('button', { name: 'Subir video' })).toBeDisabled();
+    expect(screen.queryByText(/Llegaste al límite de tu espacio/)).not.toBeInTheDocument();
     cleanup();
     await renderUploadPage();
     expect(await screen.findByRole('button', { name: 'Reintentar registro pendiente' }))
@@ -425,6 +433,7 @@ describe('UploadPage', () => {
     await clickUpload();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Falló Mongo');
+    expect(screen.queryByText(/Llegaste al límite de tu espacio/)).not.toBeInTheDocument();
   });
 
   it.each([

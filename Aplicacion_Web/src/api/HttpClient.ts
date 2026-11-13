@@ -70,7 +70,14 @@ export class HttpClient {
   }
 
   async delete(path: string): Promise<void> {
-    await this.send('DELETE', path);
+    const response = await this.send('DELETE', path);
+    if (response.status === 202) {
+      throw new ApiError(
+        202,
+        'deletion_pending',
+        'La eliminación todavía está pendiente de completarse',
+      );
+    }
   }
 
   /** Usa XMLHttpRequest porque fetch no informa cuánto se ha enviado. */
