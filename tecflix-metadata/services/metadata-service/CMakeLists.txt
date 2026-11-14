@@ -10,7 +10,18 @@ option(METADATA_BUILD_TESTS "Compila las pruebas unitarias" ON)
 # en memoria: sirve para compilar y probar en cualquier máquina sin instalar el driver.
 option(METADATA_ENABLE_MONGO "Compila el repositorio MongoDB (requiere mongocxx)" OFF)
 
+option(TECFLIX_REAL_TELEMETRY "Exportar métricas reales de metadata a OTLP" OFF)
+
 include(cmake/Dependencies.cmake)
+
+if(TECFLIX_REAL_TELEMETRY)
+    include(FetchContent)
+    add_subdirectory(
+        "${CMAKE_CURRENT_LIST_DIR}/../../../observability/telemetry"
+        "${CMAKE_CURRENT_BINARY_DIR}/observability-telemetry"
+    )
+endif()
+
 # Mismo validador HS256 que usa user-service.
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../../shared/auth"
                  "${CMAKE_CURRENT_BINARY_DIR}/shared-auth")
@@ -39,6 +50,9 @@ add_library(metadata_core
     src/video_validation.cpp
 )
 target_include_directories(metadata_core PUBLIC include)
+target_include_directories(
+    metadata_core PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../../.."
+)
 target_link_libraries(metadata_core
     PUBLIC httplib::httplib nlohmann_json::nlohmann_json tecflix_auth
     PRIVATE metadata_warnings
@@ -54,6 +68,16 @@ endif()
 # así metadata_core, que usan las pruebas, no depende del driver.
 add_executable(metadata-service src/main.cpp src/repository_factory.cpp)
 target_link_libraries(metadata-service PRIVATE metadata_core metadata_warnings)
+
+if(TECFLIX_REAL_TELEMETRY)
+    target_compile_definitions(
+        metadata-service PRIVATE TECFLIX_REAL_TELEMETRY=1
+    )
+
+    target_link_libraries(
+        metadata-service PRIVATE tecflix_telemetry
+    )
+endif()
 
 if(METADATA_ENABLE_MONGO)
     find_package(mongocxx CONFIG REQUIRED)

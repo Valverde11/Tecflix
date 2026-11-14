@@ -10,6 +10,9 @@
 #include "tecflix/users/storage/user_repository.hpp"
 #include "tecflix/users/quota_operation_journal.hpp"
 #include "tecflix/users/user_controller.hpp"
+#ifdef TECFLIX_REAL_TELEMETRY
+#include "tecflix/telemetry/telemetry.hpp"
+#endif
 
 namespace {
 
@@ -29,7 +32,17 @@ int main() {
     const AuthService auth(config.AuthSecret());
     const ServiceTokenVerifier service_tokens(config.ServiceSecret());
     UserController controller(users, auth, service_tokens);
+#ifdef TECFLIX_REAL_TELEMETRY
+    tecflix::telemetry::Telemetry telemetry(
+        tecflix::telemetry::ConfigFromEnv("user-service"));
+#endif
     ApiServer server(controller, config.CorsOrigin());
+#ifdef TECFLIX_REAL_TELEMETRY
+    server.EnableMetrics([&telemetry](const std::string& method, const std::string& route,
+                                      int status, double seconds) {
+      telemetry.Http().Record(method, route, status, seconds);
+    });
+#endif
 
     if (!server.Bind(kListenHost, config.Port())) {
       std::cerr << "No se pudo abrir el puerto " << config.Port() << '\n';
@@ -37,7 +50,13 @@ int main() {
     }
     std::cout << "user-service escuchando en " << kListenHost << ':'
               << config.Port() << '\n';
-    return server.Listen() ? 0 : 1;
+    const bool started = server.Listen();
+#ifdef TECFLIX_REAL_TELEMETRY
+    if (!telemetry.ForceFlush()) {
+      std::cerr << "No se pudieron exportar todas las métricas de usuarios\n";
+    }
+#endif
+    return started ? 0 : 1;
   } catch (const std::exception& error) {
     std::cerr << "Error al iniciar user-service: " << error.what() << '\n';
     return 1;

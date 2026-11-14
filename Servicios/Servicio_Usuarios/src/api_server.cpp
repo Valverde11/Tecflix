@@ -1,6 +1,9 @@
 #include "tecflix/users/api_server.hpp"
+#include "shared/observability/http_metrics.hpp"
 
 #include <exception>
+#include <memory>
+#include <utility>
 
 #include "tecflix/users/api_error.hpp"
 
@@ -32,6 +35,20 @@ ApiServer::ApiServer(UserController& users, const std::string& cors_origin) {
       });
   health_controller_.RegisterRoutes(server_);
   users.RegisterRoutes(server_);
+}
+
+void ApiServer::EnableMetrics(MetricsCallback callback) {
+  metrics_tracker_ = std::make_shared<tecflix::observability::HttpMetricsTracker>(
+      std::move(callback));
+  const auto tracker = metrics_tracker_;
+  server_.set_pre_routing_handler([tracker](const httplib::Request& req,
+                                            httplib::Response&) {
+    tracker->Begin(req);
+    return httplib::Server::HandlerResponse::Unhandled;
+  });
+  server_.set_logger([tracker](const httplib::Request& req, const httplib::Response& res) {
+    tracker->End(req, res);
+  });
 }
 
 void ApiServer::ConfigureCors(const std::string& origin) {

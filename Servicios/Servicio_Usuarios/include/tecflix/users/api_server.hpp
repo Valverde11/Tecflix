@@ -3,11 +3,14 @@
 #include <httplib.h>
 
 #include <cstddef>
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "tecflix/users/health_controller.hpp"
 #include "tecflix/users/user_controller.hpp"
 
+namespace tecflix::observability { class HttpMetricsTracker; }
 namespace tecflix::users {
 
 // Servidor HTTP del servicio: es dueño del httplib::Server y registra las rutas
@@ -26,6 +29,9 @@ class ApiServer {
   ApiServer(const ApiServer&) = delete;
   ApiServer& operator=(const ApiServer&) = delete;
 
+  using MetricsCallback = std::function<void(const std::string&, const std::string&, int, double)>;
+  void EnableMetrics(MetricsCallback callback);
+
   bool Bind(const std::string& host, int port);
   // Abre un puerto libre elegido por el sistema operativo; devuelve -1 si falla.
   int BindToAnyPort(const std::string& host);
@@ -38,6 +44,7 @@ class ApiServer {
  private:
   void ConfigureCors(const std::string& origin);
 
+  std::shared_ptr<tecflix::observability::HttpMetricsTracker> metrics_tracker_;
   httplib::Server server_;
   HealthController health_controller_;
 };

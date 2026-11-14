@@ -1,5 +1,8 @@
 #include "tecflix/VideoService.h"
 #include "tecflix/QuotaClient.h"
+#ifdef TECFLIX_REAL_TELEMETRY
+#include "tecflix/telemetry/telemetry.hpp"
+#endif
 
 #include <algorithm>
 #include <cstdint>
@@ -88,6 +91,14 @@ int main() {
                                  std::move(transcoder), validator, quota_client,
                                  metadata_host, metadata_port);
 
+#ifdef TECFLIX_REAL_TELEMETRY
+    const auto telemetry_config = tecflix::telemetry::ConfigFromEnv("streaming-service");
+    tecflix::telemetry::Telemetry telemetry(telemetry_config);
+    videos.EnableMetrics([&telemetry](const std::string& method, const std::string& route,
+                                      int status, double seconds) {
+        telemetry.Http().Record(method, route, status, seconds);
+    });
+#endif
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);
     server.new_task_queue = [] { return new httplib::ThreadPool(8); };
@@ -95,7 +106,13 @@ int main() {
 
     const auto port = server_port();
     std::cout << "Tecflix API listening on 0.0.0.0:" << port << '\n';
-    if (!server.listen("0.0.0.0", port)) {
+    const bool started = server.listen("0.0.0.0", port);
+#ifdef TECFLIX_REAL_TELEMETRY
+    if (!telemetry.ForceFlush()) {
+        std::cerr << "No se pudieron exportar todas las métricas de streaming\n";
+    }
+#endif
+    if (!started) {
         std::cerr << "Could not start HTTP server\n";
         return 1;
     }

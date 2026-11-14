@@ -8,6 +8,7 @@
 #include <httplib.h>
 
 #include <condition_variable>
+#include <functional>
 #include <cstdint>
 #include <cstddef>
 #include <deque>
@@ -20,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
+namespace tecflix::observability { class HttpMetricsTracker; }
 namespace tecflix {
 
 enum class JobStatus { queued, processing, ready, failed };
@@ -38,6 +40,8 @@ public:
     VideoService& operator=(const VideoService&) = delete;
 
     void register_routes(httplib::Server& server);
+    using MetricsCallback = std::function<void(const std::string&, const std::string&, int, double)>;
+    void EnableMetrics(MetricsCallback callback);
 
 private:
     void upload(const httplib::Request& request,
@@ -63,6 +67,7 @@ private:
     void save_record(const UploadRecord& record);
     static void error(httplib::Response& response, int code, const char* message);
 
+    std::shared_ptr<tecflix::observability::HttpMetricsTracker> metrics_tracker_;
     std::filesystem::path storage_directory_;
     FfmpegTranscoder transcoder_;
     UploadRecordStore record_store_;
