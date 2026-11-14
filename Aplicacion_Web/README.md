@@ -85,3 +85,13 @@ src/
 ```
 
 La sesión se guarda en `sessionStorage`, así que se cierra al cerrar la pestaña. Un 401 en una petición con token cierra la sesión y lleva al login.
+
+
+## Recuperación ante fallos parciales (V1)
+
+- Si streaming acepta una subida pero falla la creación de metadata, la web guarda la operación de metadata pendiente para el usuario y reintenta crearla con el mismo `videoId`; **no vuelve a subir** automáticamente el archivo. La información pendiente se almacena en `localStorage` y puede persistir tras recargar.
+- Si una eliminación queda incompleta, la web mantiene la operación pendiente y la reintenta cuando el servicio vuelve a estar disponible. Una respuesta `202 deletion_pending` de streaming **no significa** que la eliminación y la liberación de cuota hayan terminado; debe mantenerse pendiente hasta obtener una respuesta concluyente.
+- Se han probado estos casos bloqueando solicitudes en las herramientas del navegador y restaurando la conexión. Las pruebas locales no sustituyen un E2E automatizado con tres APIs y MongoDB real.
+- El estado de transcodificación se consulta a streaming; los datos descriptivos y la visibilidad provienen de metadata.
+
+Los dos puntos que siguen sujetos a acuerdo del equipo son el orden de eliminación entre metadata y streaming y el soporte de `Idempotency-Key` para reintentar una subida cuya respuesta inicial se perdió. No deben considerarse implementados por el hecho de contar con operaciones de cuota idempotentes.

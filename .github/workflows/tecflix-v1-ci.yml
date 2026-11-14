@@ -94,3 +94,69 @@ jobs:
         run: cmake --build tecflix-metadata/services/metadata-service/build/ci --parallel 3
       - name: Run tests
         run: ctest --test-dir tecflix-metadata/services/metadata-service/build/ci --output-on-failure
+
+  telemetry-build:
+    name: Telemetry ON - ${{ matrix.service }}
+    runs-on: macos-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [streaming, users, metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Protobuf
+        shell: bash
+        run: |
+          if ! brew list protobuf >/dev/null 2>&1; then
+            brew install protobuf
+          fi
+      - name: Configure streaming (real OTLP)
+        if: matrix.service == 'streaming'
+        run: >-
+          cmake -S . -B build/ci-telemetry
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DTECFLIX_REAL_TELEMETRY=ON
+          -DTECFLIX_ENABLE_TELEMETRY=ON
+      - name: Configure users (real OTLP)
+        if: matrix.service == 'users'
+        run: >-
+          cmake -S Servicios/Servicio_Usuarios
+          -B Servicios/Servicio_Usuarios/build/ci-telemetry
+          -DCMAKE_BUILD_TYPE=Release
+          -DUSER_SERVICE_BUILD_TESTS=OFF
+          -DTECFLIX_REAL_TELEMETRY=ON
+          -DTECFLIX_ENABLE_TELEMETRY=ON
+      - name: Configure metadata (real OTLP, memory repository)
+        if: matrix.service == 'metadata'
+        run: >-
+          cmake -S tecflix-metadata/services/metadata-service
+          -B tecflix-metadata/services/metadata-service/build/ci-telemetry
+          -DCMAKE_BUILD_TYPE=Release
+          -DMETADATA_BUILD_TESTS=OFF
+          -DMETADATA_ENABLE_MONGO=OFF
+          -DTECFLIX_REAL_TELEMETRY=ON
+          -DTECFLIX_ENABLE_TELEMETRY=ON
+      - name: Build selected executable
+        shell: bash
+        run: |
+          case '${{ matrix.service }}' in
+            streaming)
+              dir='build/ci-telemetry'
+              target='tecflix-api'
+              ;;
+            users)
+              dir='Servicios/Servicio_Usuarios/build/ci-telemetry'
+              target='user-service'
+              ;;
+            metadata)
+              dir='tecflix-metadata/services/metadata-service/build/ci-telemetry'
+              target='metadata-service'
+              ;;
+          esac
+          grep -q '^TECFLIX_REAL_TELEMETRY:BOOL=ON' "$dir/CMakeCache.txt"
+          grep -q '^TECFLIX_ENABLE_TELEMETRY:BOOL=ON' "$dir/CMakeCache.txt"
+          cmake --build "$dir" --target "$target" --parallel 3
+          test -f "$dir/$target"

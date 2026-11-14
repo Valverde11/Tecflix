@@ -1,99 +1,91 @@
-# Tecflix
-Sistema de streaming de video "Tecflix" con arquitectura distribuida. Desarrollado en C++ para el curso de Algoritmos y Estructuras de Datos II.
+# Tecflix V1
 
-## Observabilidad local
+Sistema de streaming distribuido desarrollado para Algoritmos y Estructuras de Datos II. Integra aplicación web React/TypeScript, tres APIs C++, MongoDB (metadata), procesamiento HLS con FFmpeg y observabilidad mediante OpenTelemetry, Prometheus y Grafana.
 
-La primera etapa del dashboard usa Prometheus para almacenar métricas y Grafana para mostrarlas. OpenTelemetry Collector recibe las métricas OTLP que emitan los servicios y las expone a Prometheus.
+## Componentes
 
-```text
-Servicios C++ --OTLP--> OpenTelemetry Collector --scrape--> Prometheus <-- Grafana
-```
+| Componente | Puerto local | Función |
+|---|---:|---|
+| Web Vite | 5173 | Registro, catálogo, subida, reproducción y administración |
+| `user-service` | 8081 | Autenticación JWT, usuarios y cuotas persistentes |
+| `metadata-service` | 8082 | Catálogo, visibilidad y metadata; en integración local utiliza MongoDB |
+| `streaming-service` | 8083 | Archivo original, transcodificación, segmentos HLS y estado del video |
+| Grafana / Prometheus | 3000 / 9090 | Visualización y consulta de métricas |
+| OTLP HTTP | 4318 | Recepción de métricas del Collector |
 
-### Requisitos
+Los IDs de usuario son numéricos; `owner_id` en metadata es una cadena decimal. El video utiliza un ID hexadecimal de 32 caracteres. El estado de transcodificación pertenece a streaming, **no se duplica en MongoDB**. Las cuotas cuentan los bytes realmente recibidos del archivo original, no los segmentos HLS.
 
-- Docker Desktop (o Docker Engine) con Docker Compose v2.
+## Preparación local
 
-### Iniciar
+- C++17, CMake, Node.js 24 y npm, Docker Compose, FFmpeg y MongoDB para el modo de integración real.
+- Crear las variables privadas siguiendo los `.env.example`. No versionar `.env`, `AUTH_SECRET` ni `SERVICE_SECRET`.
+- Compartir `AUTH_SECRET` entre las APIs para validar los JWT. La configuración de cada servicio se describe en `Documentacion/TECFLIX_COMANDOS_Y_PRUEBAS.md` y `Documentacion/RESUMEN_INTEGRACION_V1.md`.
+- Para conectar la web a servicios reales: `VITE_MOCK_VIDEO_APIS=false`, con las URLs de las APIs 8081, 8082 y 8083.
 
-Desde la raíz del repositorio:
+**Observabilidad:** iniciar desde la carpeta de Compose, no desde la raíz:
 
-```sh
+```bash
+cd observability/stack
 docker compose up -d
+docker compose ps
 ```
 
-Abre estas direcciones en tu navegador:
+Para compilar cada API con métricas OTLP reales, configurar `-DTECFLIX_REAL_TELEMETRY=ON` en su compilación CMake y arrancar con las variables adecuadas:
 
-- Grafana: http://localhost:3000 (usuario y contraseña iniciales: `admin` / `admin`; cambia la contraseña al iniciar sesión).
-- Prometheus: http://localhost:9090
-
-Comprueba que Prometheus ve sus dos targets en http://localhost:9090/targets: `otel-collector` y `otel-metrics`. En Grafana, abre **Dashboards → Tecflix → Tecflix - System Overview**.
-
-Los paneles de disponibilidad del collector deberían mostrar datos enseguida. Los paneles HTTP permanecerán vacíos hasta que los servicios C++ envíen métricas. Los puertos OTLP `4317` (gRPC) y `4318` (HTTP) están publicados solo en la máquina local.
-
-Si Grafana dice que `Tecflix - System Overview` ya existe con el mismo UID al intentar importarlo, no lo importes de nuevo: el dashboard se provisiona automáticamente desde el archivo local. Ábrelo directamente en http://localhost:3000/d/tecflix-system/tecflix-system-overview o búscalo desde **Dashboards** en la carpeta **Tecflix**.
-
-### Ejemplo C++: contador y latencia
-
-El ejemplo de [main.cpp](./examples/cpp-metrics/main.cpp) simula solicitudes `GET` y registra dos métricas:
-
-- `tecflix.http.server.requests`: un **contador**, que aumenta una vez por solicitud.
-- `http.server.request.duration`: un **histograma** en segundos, que guarda cuánto tardó cada solicitud y permite calcular percentiles como p95. Sus buckets explícitos van de 25 ms a 1 s, con límites más detallados donde caen las duraciones del ejemplo.
-
-El programa simula 40 solicitudes: cada décima responde con HTTP 500 y las demás con HTTP 200. No es todavía un servidor web; sirve para aprender y comprobar el recorrido de las métricas.
-
-Necesitas CMake, un compilador C++17 y Git. La primera configuración descarga OpenTelemetry C++ v1.20.0.
-
-```sh
-cmake -S examples/cpp-metrics -B build/cpp-metrics
-cmake --build build/cpp-metrics --target tecflix_metrics_demo
-./build/cpp-metrics/tecflix_metrics_demo
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export SERVICE_INSTANCE_ID=local-dev
+# Definir en cada terminal, respectivamente:
+# OTEL_SERVICE_NAME=user-service | metadata-service | streaming-service
 ```
 
-La configuración genera `build/cpp-metrics/compile_commands.json` para que el editor pueda encontrar los encabezados de OpenTelemetry. Si VS Code aún subraya los `#include`, configura la extensión C/C++ para usar ese archivo de compilación o selecciona CMake como proveedor de configuración IntelliSense.
+Si se configura `TECFLIX_REAL_TELEMETRY=OFF`, el ejecutable funcional puede compilarse sin la librería OpenTelemetry real; esta opción es usada por los cuatro jobs de regresión funcional en CI.
 
-La advertencia de CMake acerca de `CMP0092` proviene del `CMakeLists.txt` de OpenTelemetry descargado en `build/`; es una advertencia de política obsoleta del proyecto externo, no un error de compilación. No edites ese archivo generado dentro de `build/`.
+Grafana: http://localhost:3000 — dashboard `Tecflix - System Overview` de la carpeta Tecflix. Prometheus: http://localhost:9090. La contraseña inicial de Grafana puede haber cambiado; no almacenar credenciales en el repositorio. El dashboard se aprovisiona desde `observability/stack/grafana/dashboards/`.
 
-Primero deja corriendo el dashboard con `docker compose up -d`. Después ejecuta el ejemplo. En Prometheus, puedes probar:
+## Verificación
+
+```bash
+cd Aplicacion_Web
+npm ci
+npm run lint
+npm run build
+npm test
+```
+
+Desde la raíz del repositorio, una vez compilados los servicios:
+
+```bash
+bash tecflix_v1_verification.sh
+```
+
+Ese script **no crea las compilaciones faltantes** y falla si omite bloques. GitHub Actions ejecuta cuatro jobs de regresión (web, streaming, usuarios y metadata en modo memoria) y un job matricial adicional que compila las tres APIs con telemetría real habilitada. La compilación de telemetría no sustituye las pruebas E2E ni el modo MongoDB de metadata.
+
+Consultas útiles en Prometheus:
 
 ```promql
-tecflix_http_server_requests_total
-```
-
-Esta consulta directa confirma que el contador llegó. Las consultas con `rate()` requieren varias muestras dentro del rango de tiempo; como Prometheus recopila cada 15 segundos, espera al menos 30 segundos después de iniciar el demo antes de consultar tasas o percentiles:
-
-```promql
-sum by (service_name) (rate(tecflix_http_server_requests_total[1m]))
+probe_success{job="service-health"}
 ```
 
 ```promql
-histogram_quantile(
-  0.95,
-  sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m]))
-)
+sum by (service_name) (http_server_request_duration_seconds_count)
 ```
 
-En Grafana abre **Dashboards → Tecflix → Tecflix - System Overview**. El programa termina después de emitir las solicitudes; `ForceFlush()` intenta exportar las últimas mediciones antes de salir. Al destruirse el `MeterProvider`, OpenTelemetry apaga el lector y el exportador.
-
-El p95 es una estimación calculada dentro del bucket que contiene el percentil, no una medición exacta de una solicitud individual. Para este simulador debería quedar cerca de 0.11–0.125 segundos. Si cambias la carga para producir latencias muy diferentes, ajusta también los límites del histograma.
-
-### Cómo leer el ejemplo
-
-1. `StartMetrics()` conecta el SDK de OpenTelemetry con el Collector por OTLP/HTTP (`localhost:4318/v1/metrics`).
-2. El recurso `service.name=tecflix-cpp-demo` identifica qué servicio produjo las métricas.
-3. `RequestMetrics` crea los instrumentos: el contador y el histograma.
-4. En el ciclo, `steady_clock` mide el tiempo transcurrido; después `RecordRequest()` incrementa el contador y registra la duración junto con el método y el código HTTP.
-5. El Collector expone esas mediciones a Prometheus, y Grafana consulta Prometheus para dibujar los paneles.
-
-Para usar el mismo patrón en una API real, llama `RecordRequest` al terminar de procesar cada petición y sustituye la espera simulada por tu lógica real de endpoint.
-
-Para detener los contenedores sin borrar los datos:
-
-```sh
-docker compose down
+```promql
+sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 ```
 
-Para eliminar también los datos locales de Prometheus y Grafana:
+`probe_success=1` significa que se puede consultar `/health`; **no garantiza** que la API exporte métricas. Para verificar OTLP, comprobar que `http_server_request_duration_seconds_count` aparece en los tres servicios.
 
-```sh
-docker compose down -v
-```
+Los percentiles de histogramas son estimaciones dependientes de buckets: con solicitudes `/health` muy breves pueden aparecer valores p95 alrededor de 23,75 ms pese a promedios muy inferiores. Para evaluar desempeño real deben generarse rutas funcionales, no solamente `/health`.
+
+## Material de entrega
+
+- `Documentacion/SPEC_INTEGRATION.md`: contrato previsto y diferencias identificadas respecto al flujo actual.
+- `Documentacion/SPEC_DASHBOARD.md`: diseño de observabilidad y validación real.
+- `Documentacion/RESUMEN_INTEGRACION_V1.md`: resumen para los cuatro integrantes.
+- `Documentacion/VALIDACION_FINAL_V1.md`: pruebas E2E, seguridad de Git y evidencias por recoger.
+- `Aplicacion_Web/README.md`: configuración y pruebas de la interfaz.
+- `observability/docs/integracion.md`: detalles de instrumentación.
+
+**Pendiente de acuerdo del equipo:** revisar la divergencia del orden de eliminación `streaming → metadata` frente al flujo de recuperación observado y confirmar si el contrato exige `Idempotency-Key` en el POST de subida. La idempotencia de cuotas **no equivale** a idempotencia de la subida HTTP.

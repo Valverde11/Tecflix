@@ -1,3 +1,5 @@
+> **Actualización V1 (noviembre de 2026):** las tres APIs reales ya están instrumentadas mediante `TECFLIX_REAL_TELEMETRY=ON` y `shared/observability/http_metrics.hpp`, con nombres `user-service`, `metadata-service` y `streaming-service`. La explicación de `sample-service` que sigue se conserva como demostración y antecedente, **no** como requisito para observar las APIs reales. El `service-health` actual apunta a 8081/8082/8083. Ver `README.md` y `Documentacion/SPEC_DASHBOARD.md` para las consultas verificadas.
+
 # Integración de una API con la observabilidad de Tecflix
 
 Esta guía define los pasos para que cada servicio use la librería compartida `tecflix_telemetry`. No requiere que el Dashboard conozca la lógica interna de usuarios, metadata o streaming.

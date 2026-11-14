@@ -1,5 +1,8 @@
 # SPEC_INTEGRATION.md — Contrato de integración de Tecflix (borrador V1.0)
 
+> **Nota de implementación verificada — noviembre de 2026.** Este documento conserva el contrato objetivo V1.0 y puede contener pasos aún propuestos. La regresión local completa y los cuatro jobs funcionales de GitHub Actions fueron reportados aprobados; las tres APIs exportaron métricas HTTP reales a Prometheus/Grafana. La validación realizada de recuperación de eliminaciones siguió un orden **metadata primero**, distinto al orden **streaming primero** descrito en este SPEC: debe acordarse cuál será el contrato definitivo. La reserva/liberación idempotente de cuota sí se probó, pero el soporte de `Idempotency-Key` del POST inicial de streaming no quedó demostrado. No cambiar las rutas o el flujo funcional solamente para igualar la documentación sin revisión del equipo.
+
+
 **Estado:** borrador técnico para revisión del equipo. La política de cuota de V1.0 (tamaño original medido por streaming) ya fue aprobada por el responsable de integración; las demás decisiones pendientes requieren revisión del equipo.
 
 **Base analizada:** snapshot de `Tecflix.zip` recibido el 8 de noviembre de 2026, rama `V1test`, commit `5b7816a` (`Merge pull request #10 from Valverde11/Aplicación_Web`).
