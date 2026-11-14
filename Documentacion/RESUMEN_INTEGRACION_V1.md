@@ -2,7 +2,7 @@
 
 **Fecha:** 13 de noviembre de 2026  
 **Rama de integración:** `V1test`  
-**Estado:** pruebas locales completas aprobadas según ejecución reportada por el equipo; el resultado de GitHub Actions y el end-to-end real deben confirmarse por separado.
+**Estado:** pruebas locales completas aprobadas según ejecución reportada por el equipo; los cuatro jobs de GitHub Actions pasaron según confirmación posterior; el end-to-end real debe confirmarse por separado.
 
 ## Qué cambió
 
@@ -46,7 +46,7 @@ Blackbox Exporter comprueba /health de las tres APIs por separado
 - Prueba manual HTTP real: `GET /health` en los tres servicios; rutas no saludables como `GET /api/auth/login` y `GET /api/videos/:id` registraron correctamente respuestas 404.
 - Pruebas manuales de recuperación: metadata pendiente y eliminación pendiente mediante interrupciones controladas en Chrome DevTools.
 
-> Estos resultados son **locales**. No equivalen a que los runners limpios de GitHub Actions hayan pasado ni prueban por sí solos un E2E real de subida, transcodificación y reproducción con MongoDB/FFmpeg en CI.
+> Estos resultados son **locales**. La ejecución posterior de los cuatro jobs funcionales de GitHub Actions también pasó, aunque el E2E real queda pendiente ni prueban por sí solos un E2E real de subida, transcodificación y reproducción con MongoDB/FFmpeg en CI.
 
 ## Próximos pasos y responsables
 
@@ -56,7 +56,7 @@ Blackbox Exporter comprueba /health de las tres APIs por separado
 | Web | Revisar el contrato definitivo de orden de DELETE y el comportamiento de reintentos cuando se pierde la respuesta del POST inicial |
 | Streaming | Verificar el contrato de subida (`Idempotency-Key`) frente a la especificación y la recuperación de estados persistidos |
 | Usuarios/metadata | Revisar idempotencia y que los contratos de operaciones de cuota / MongoDB reflejen exactamente la implementación |
-| Equipo | Abrir PR, ejecutar CI en GitHub y hacer un E2E con servicios reales, MongoDB y FFmpeg; documentar resultados |
+| Equipo | Revisar el nuevo job ON en GitHub y hacer un E2E con servicios reales, MongoDB y FFmpeg; documentar resultados |
 
 ## Arranque y comprobación rápida
 
@@ -70,3 +70,10 @@ Blackbox Exporter comprueba /health de las tres APIs por separado
 ## Precauciones para subir a Git
 
 No subir `.env`, secretos, `data/`, `quarantine/`, archivos `segment_*.ts`, manifiestos/transcodificaciones generadas, bases MongoDB locales, `node_modules/`, `build/`, `dist/`, ni volúmenes Docker. Verificar con `git status --short`, `git check-ignore -v` y `git ls-files` antes de confirmar el commit. Añadir `quarantine/` al `.gitignore` si no está excluido.
+
+
+## Actualización del cierre de CI
+
+- **Confirmado por el equipo:** los cuatro jobs existentes en GitHub Actions quedaron verdes después de corregir los include paths CMake de las pruebas streaming.
+- **Añadido para validar remotamente:** job matricial `Telemetry ON` para compilar los ejecutables de usuarios, metadata y streaming con SDK OpenTelemetry real; su resultado todavía no está confirmado. Este job no arranca Collector ni ejecuta E2E.
+- **Entregables de documentación:** README principal, README web, SPEC de integración y dashboard, guía de observabilidad y `VALIDACION_FINAL_V1.md` actualizados.

@@ -1,8 +1,11 @@
 # SPEC_DASHBOARD.md — Dashboard del sistema (observabilidad)
 
+> **Estado comprobado en V1:** `user-service` (8081), `metadata-service` (8082) y `streaming-service` (8083) exportaron métricas HTTP reales al Collector y Prometheus. Se observaron contadores, `rate`, promedio, p95, rutas normalizadas (`/api/videos/:id`), HTTP 200/404 y tres comprobaciones `probe_success=1`; Grafana mostró datos de los tres. En pruebas locales posteriores el script general pasó sin omisiones; los cuatro jobs funcionales de GitHub Actions pasaron. La compilación con `TECFLIX_REAL_TELEMETRY=ON` en CI se agrega por separado y requiere su primera ejecución remota. La existencia del simulador no significa que el dashboard dependa de él.
+
+
 Este archivo complementa a `SPEC.md` y cubre **solo** el módulo `observability/`. Si algo contradice a `SPEC.md`, manda `SPEC.md`. Antes de trabajar en este módulo, un agente lee `SPEC.md` (sección "Agent memory" incluida) y este archivo.
 
-**Responsable:** la persona del equipo que desarrolla el dashboard. **Última revisión:** 2026-10-26.
+**Responsable:** la persona del equipo que desarrolla el dashboard. **Última revisión de validación:** 2026-11-13 (sin alterar el alcance V1/V2 del contrato).
 
 ## 1. Alcance
 
@@ -57,7 +60,7 @@ observability/
 
 - Los puertos se publican solo en `127.0.0.1`. **Para la versión 2.0, con APIs en otra máquina, hay que abrirlos** (ver §12).
 - Prometheus recopila métricas propias de sí mismo, del Collector (`otel-collector:8888`), del exporter OTLP (`otel-metrics:9464`) y del Blackbox Exporter (`blackbox-exporter:9115`). El intervalo general es 15 s.
-- El job `service-health` consulta `/health` por medio de Blackbox Exporter. En el entorno local, el target inicial es `http://host.docker.internal:8090/health`, correspondiente al `sample-service` ejecutado en el host y etiquetado como `sample-service / local-dev`.
+- El job `service-health` consulta `/health` de las APIs reales en `host.docker.internal:8081`, `:8082` y `:8083` a través de Blackbox Exporter. El simulador `sample-service` es un componente de demostración independiente.
 - La configuración Blackbox valida HTTP 200 y un cuerpo que contenga `"status":"ok"`. `probe_success=1` indica que la comprobación pasó; `0` indica que no pasó. La comprobación no depende de que la API exporte métricas.
 - El Collector convierte los atributos del recurso (`service.name`, `service.instance.id`) en etiquetas de Prometheus. Aún solo tiene un pipeline de **métricas**; las trazas siguen pendientes.
 - Grafana se aprovisiona desde archivos: datasource con uid `prometheus` y dashboard `tecflix-system` (carpeta Tecflix, archivo `grafana/dashboards/tecflix-system.json`, montado de solo lectura). Los cambios se hacen en el archivo, no en la interfaz.
@@ -253,3 +256,14 @@ Grafana: `http://localhost:3000/d/tecflix-system/tecflix-system-overview`.
 - **2026-10-19:** El usuario confirmó que revisó los tres cambios locales y los guardó en commit `954c960` (`Mejora en Grafana`); la rama `Dashboard_Sistema` está limpia. La rama contiene 11 commits más que `main` local, mientras que `main` local y `origin/main` divergen (main local 2 commits adelante y 1 atrás); frente a `origin/main`, la rama está 1 commit atrás y 13 adelante. Recomendación: no hacer merge directo; primero `git fetch origin`, revisar `git log origin/main..HEAD` y `git diff origin/main...HEAD` (incluido el renombre de SPEC.md a SPEC_DASHBOARD.md), probar desde build limpio (`cmake -S observability -B observability/build`, build y CTest), luego publicar rama y abrir PR a `main`; verificar que el PR no incluya cambios inesperados y que el equipo acepte el renombre de la especificación. Build actual no está disponible en el worktree recién cambiado, así que debe configurarse de nuevo antes de confirmar las pruebas de este commit.
 - **2026-10-27:** El responsable validó en macOS la compilación del módulo con telemetría habilitada, 19/19 pruebas y 100 % de cobertura reportada en `config.cpp`, `telemetry.cpp`, `telemetry.hpp` e `instrument.hpp`. La validación end-to-end con `sample-service` mostró los paneles de tasa, latencia por ruta, errores 5xx, códigos HTTP y promedio/p95/p99. Los valores informados (8,90 % de errores globales y latencia p95 cercana a 197 ms) son resultados de una ejecución del simulador, no umbrales esperados para las APIs reales.
 - **2026-10-27:** Se preparó comprobación HTTP de salud independiente mediante Blackbox Exporter, con un target inicial para `sample-service / local-dev`; se añadió el panel `Salud de servicios (/health)`, se amplió la fuente de variables para incluir series `probe_success`, se creó `observability/docs/integracion.md` y un workflow de CI que ejecuta tests y comprueba cobertura. Pendiente: validar Compose, Prometheus y el panel nuevo en runtime, y observar el resultado real del workflow en GitHub.
+
+## Validación de cierre de V1 (evidencia observada)
+
+- `sum by (service_name) (http_server_request_duration_seconds_count)` devolvió las tres APIs reales.
+- `probe_success{job="service-health"}` devolvió tres valores `1`. Esto prueba accesibilidad a `/health`, no la exportación OTLP por sí sola.
+- Los RPS aumentaron al enviar 50 solicitudes por servicio; se registraron rutas `/api/metadata/videos`, `/api/auth/login` y `/api/videos/:id`.
+- Los códigos 200 y 404 aparecieron correctamente; 404 no se cuenta en la tasa de errores 5xx.
+- Los percentiles pueden dar `NaN` cuando no hay incrementos suficientes en la ventana; se observó que las rutas adicionales empezaron a tener valores tras generar tráfico. El p95 repetido de 23,75 ms es interpolación del histograma, no una latencia exacta.
+- En el panel 5xx usar `or on(service_name)` con `0 * tasa_total` para mostrar 0% en ausencia de errores, conservar los filtros `$service` y `$instance`, y configurar la unidad `Percent (0-100)`.
+
+En V1 la telemetría validada es de **métricas HTTP**. No afirmar que se exportan trazas distribuidas reales sin una prueba específica de trazas.
