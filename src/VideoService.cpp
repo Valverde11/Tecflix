@@ -1,4 +1,5 @@
 #include "tecflix/VideoService.h"
+#include "shared/observability/http_metrics.hpp"
 
 #include <algorithm>
 #include <array>
@@ -162,13 +163,24 @@ VideoService::~VideoService() {
     for (auto& worker : workers_) worker.join();
 }
 
+void VideoService::EnableMetrics(MetricsCallback callback) {
+    metrics_tracker_ = std::make_shared<tecflix::observability::HttpMetricsTracker>(
+        std::move(callback));
+}
+
 void VideoService::register_routes(httplib::Server& server) {
+    if (metrics_tracker_) {
+        server.set_logger([this](const httplib::Request& req, const httplib::Response& res) {
+            metrics_tracker_->End(req, res);
+        });
+    }
     server.Get("/health", [](const httplib::Request&, httplib::Response& response) {
         response.set_content(R"({"status":"ok"})", "application/json");
     });
 
     server.set_pre_routing_handler(
-        [](const httplib::Request& req, httplib::Response& res) {
+        [this](const httplib::Request& req, httplib::Response& res) {
+            if (metrics_tracker_) metrics_tracker_->Begin(req);
             const std::string origin = req.get_header_value("Origin");
     
             const bool allowed =

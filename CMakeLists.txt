@@ -27,6 +27,11 @@ endif()
 
 add_subdirectory(shared/auth)
 
+option(TECFLIX_REAL_TELEMETRY "Exportar métricas de la API real a OTLP" ON)
+if(TECFLIX_REAL_TELEMETRY)
+    add_subdirectory(observability/telemetry)
+endif()
+
 
 add_library(cpp-httplib INTERFACE)
 target_include_directories(cpp-httplib SYSTEM INTERFACE
@@ -44,6 +49,11 @@ add_executable(tecflix-api
 target_include_directories(tecflix-api PRIVATE include)
 target_compile_features(tecflix-api PRIVATE cxx_std_17)
 target_link_libraries(tecflix-api PRIVATE httplib::httplib Threads::Threads tecflix_auth nlohmann_json::nlohmann_json)
+target_include_directories(tecflix-api PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+if(TECFLIX_REAL_TELEMETRY)
+    target_compile_definitions(tecflix-api PRIVATE TECFLIX_REAL_TELEMETRY=1)
+    target_link_libraries(tecflix-api PRIVATE tecflix_telemetry)
+endif()
 
 if(MSVC)
     target_compile_options(tecflix-api PRIVATE /W4 /O2)

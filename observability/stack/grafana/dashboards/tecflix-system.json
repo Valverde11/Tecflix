@@ -1,28 +1,25 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
+  "id": 2,
   "links": [],
-  "refresh": "15s",
-  "schemaVersion": 40,
-  "tags": [
-    "tecflix",
-    "observability"
-  ],
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "Tecflix - System Overview",
-  "uid": "tecflix-system",
-  "version": 4,
-  "weekStart": "",
   "panels": [
     {
       "datasource": {
@@ -79,6 +76,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -86,7 +84,9 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
       "pluginVersion": "11.5.2",
       "targets": [
@@ -155,6 +155,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -162,7 +163,9 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
       "pluginVersion": "11.5.2",
       "targets": [
@@ -181,12 +184,13 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Proporción de respuestas HTTP 5xx sobre el total, con los filtros de servicio e instancia.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "unit": "percentunit",
+          "mappings": [],
           "noValue": "Sin tráfico",
           "thresholds": {
             "mode": "absolute",
@@ -204,7 +208,8 @@
                 "value": 0.05
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -220,6 +225,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -227,7 +233,9 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
       "pluginVersion": "11.5.2",
       "targets": [
@@ -239,20 +247,20 @@
         }
       ],
       "title": "Tasa de errores 5xx",
-      "type": "stat",
-      "description": "Proporción de respuestas HTTP 5xx sobre el total, con los filtros de servicio e instancia."
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "El 95% de las solicitudes tardó menos que este valor (estimado con los buckets del histograma).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "unit": "s",
+          "mappings": [],
           "noValue": "Sin tráfico",
           "thresholds": {
             "mode": "absolute",
@@ -270,7 +278,8 @@
                 "value": 0.5
               }
             ]
-          }
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -286,6 +295,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -293,7 +303,9 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
       "pluginVersion": "11.5.2",
       "targets": [
@@ -305,8 +317,7 @@
         }
       ],
       "title": "Latencia p95",
-      "type": "stat",
-      "description": "El 95% de las solicitudes tardó menos que este valor (estimado con los buckets del histograma)."
+      "type": "stat"
     },
     {
       "datasource": {
@@ -318,14 +329,54 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "reqps",
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "lineWidth": 1,
             "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "auto",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "reqps"
         },
         "overrides": []
       },
@@ -344,10 +395,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
@@ -369,14 +422,54 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s",
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "lineWidth": 1,
             "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "auto",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -395,10 +488,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
@@ -415,20 +510,63 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Un servicio sin errores aparece en 0%, no desaparece del gráfico.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "percentunit",
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "lineWidth": 1,
             "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "auto",
-            "spanNulls": false
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
-          "min": 0
+          "decimals": 2,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -447,21 +585,23 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\",http_response_status_code=~\"5..\"}[$__rate_interval])) or 0 * sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval]))) / sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__rate_interval]))",
+          "expr": "100 *\n(\n  sum by (service_name) (\n    rate(http_server_request_duration_seconds_count{\n      service_name=~\"$service\",\n      service_instance_id=~\"$instance\",\n      http_response_status_code=~\"5..\"\n    }[$__rate_interval])\n  )\n  or on(service_name)\n  (\n    0 * sum by (service_name) (\n      rate(http_server_request_duration_seconds_count{\n        service_name=~\"$service\",\n        service_instance_id=~\"$instance\"\n      }[$__rate_interval])\n    )\n  )\n)\n/\nclamp_min(\n  sum by (service_name) (\n    rate(http_server_request_duration_seconds_count{\n      service_name=~\"$service\",\n      service_instance_id=~\"$instance\"\n    }[$__rate_interval])\n  ),\n  0.000001\n)",
           "legendFormat": "{{service_name}}",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Tasa de errores 5xx por servicio",
-      "type": "timeseries",
-      "description": "Un servicio sin errores aparece en 0%, no desaparece del gráfico."
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -473,18 +613,54 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "reqps",
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "lineWidth": 1,
             "fillOpacity": 40,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "auto",
             "spanNulls": false,
             "stacking": {
-              "mode": "normal",
-              "group": "A"
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
-          }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "reqps"
         },
         "overrides": []
       },
@@ -503,10 +679,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
@@ -523,19 +701,60 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "El promedio oculta las solicitudes lentas; p95 y p99 las muestran. Con buckets hasta 1 s, p99 no puede pasar de 1 s.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s",
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "lineWidth": 1,
             "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "auto",
-            "spanNulls": false
-          }
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -554,10 +773,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
@@ -579,20 +800,38 @@
         }
       ],
       "title": "Promedio vs p95 vs p99",
-      "type": "timeseries",
-      "description": "El promedio oculta las solicitudes lentas; p95 y p99 las muestran. Con buckets hasta 1 s, p99 no puede pasar de 1 s."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Para encontrar qué ruta optimizar primero: ordenada de la más lenta a la más rápida.",
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
           "custom": {
-            "align": "auto"
-          }
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -604,25 +843,35 @@
       },
       "id": 10,
       "options": {
-        "showHeader": true,
         "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
         "sortBy": [
           {
-            "displayName": "p95",
-            "desc": true
+            "desc": true,
+            "displayName": "p95"
           }
         ]
       },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le, service_name, http_route) (rate(http_server_request_duration_seconds_bucket{service_name=~\"$service\",service_instance_id=~\"$instance\"}[$__range]))) > 0",
-          "legendFormat": "",
-          "refId": "A",
+          "format": "table",
           "instant": true,
-          "format": "table"
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
+      "title": "Rutas ordenadas por latencia p95 (rango seleccionado)",
       "transformations": [
         {
           "id": "organize",
@@ -631,16 +880,14 @@
               "Time": true
             },
             "renameByName": {
-              "service_name": "Servicio",
+              "Value": "p95",
               "http_route": "Ruta",
-              "Value": "p95"
+              "service_name": "Servicio"
             }
           }
         }
       ],
-      "title": "Rutas ordenadas por latencia p95 (rango seleccionado)",
-      "type": "table",
-      "description": "Para encontrar qué ruta optimizar primero: ordenada de la más lenta a la más rápida."
+      "type": "table"
     },
     {
       "datasource": {
@@ -698,6 +945,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -705,7 +953,9 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value_and_name"
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
       },
       "pluginVersion": "11.5.2",
       "targets": [
@@ -728,6 +978,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "Estado del exportador que realiza las comprobaciones HTTP. Si este panel está DOWN o sin datos, el panel de salud de servicios no es concluyente.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -766,23 +1017,6 @@
         },
         "overrides": []
       },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value_and_name"
-      },
-      "pluginVersion": "11.5.2",
-      "type": "stat",
-      "description": "Estado del exportador que realiza las comprobaciones HTTP. Si este panel está DOWN o sin datos, el panel de salud de servicios no es concluyente.",
       "gridPos": {
         "h": 5,
         "w": 12,
@@ -790,6 +1024,24 @@
         "y": 29
       },
       "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.2",
       "targets": [
         {
           "datasource": {
@@ -802,28 +1054,22 @@
           "refId": "A"
         }
       ],
-      "title": "Blackbox Exporter"
+      "title": "Blackbox Exporter",
+      "type": "stat"
     }
+  ],
+  "preload": false,
+  "refresh": "15s",
+  "schemaVersion": 40,
+  "tags": [
+    "tecflix",
+    "observability"
   ],
   "templating": {
     "list": [
       {
-        "name": "service",
-        "label": "Servicio",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "query": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\"}, service_name)",
-        "definition": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\"}, service_name)",
-        "refresh": 2,
-        "sort": 1,
-        "includeAll": true,
-        "multi": true,
         "allValue": ".*",
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -831,27 +1077,24 @@
             "$__all"
           ]
         },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\"}, service_name)",
+        "includeAll": true,
+        "label": "Servicio",
+        "multi": true,
+        "name": "service",
         "options": [],
-        "hide": 0,
-        "skipUrlSync": false
+        "query": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\"}, service_name)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
       },
       {
-        "name": "instance",
-        "label": "Instancia",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "query": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\",service_name=~\"$service\"}, service_instance_id)",
-        "definition": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\",service_name=~\"$service\"}, service_instance_id)",
-        "refresh": 2,
-        "sort": 1,
-        "includeAll": true,
-        "multi": true,
         "allValue": ".*",
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -859,10 +1102,31 @@
             "$__all"
           ]
         },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\",service_name=~\"$service\"}, service_instance_id)",
+        "includeAll": true,
+        "label": "Instancia",
+        "multi": true,
+        "name": "instance",
         "options": [],
-        "hide": 0,
-        "skipUrlSync": false
+        "query": "label_values({__name__=~\"http_server_request_duration_seconds_count|probe_success\",service_name=~\"$service\"}, service_instance_id)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
       }
     ]
-  }
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Tecflix - System Overview",
+  "uid": "tecflix-system",
+  "version": 11,
+  "weekStart": ""
 }

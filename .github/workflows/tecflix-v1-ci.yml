@@ -1,0 +1,96 @@
+name: Tecflix V1 CI
+
+on:
+  push:
+    branches: [V1test, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tecflix-v1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web - lint, build, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Aplicacion_Web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Aplicacion_Web/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: TypeScript and production build
+        run: npm run build
+      - name: Unit and component tests
+        run: npm test
+
+  streaming:
+    name: Streaming - build, CTest
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: >-
+          cmake -S . -B build/ci-streaming
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DTECFLIX_REAL_TELEMETRY=OFF
+      - name: Build
+        run: cmake --build build/ci-streaming --parallel 3
+      - name: Run tests
+        run: ctest --test-dir build/ci-streaming --output-on-failure
+
+  users:
+    name: Users - build, CTest
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: >-
+          cmake -S Servicios/Servicio_Usuarios
+          -B Servicios/Servicio_Usuarios/build/ci
+          -DCMAKE_BUILD_TYPE=Debug
+          -DUSER_SERVICE_BUILD_TESTS=ON
+          -DTECFLIX_REAL_TELEMETRY=OFF
+      - name: Build
+        run: cmake --build Servicios/Servicio_Usuarios/build/ci --parallel 3
+      - name: Run tests
+        run: ctest --test-dir Servicios/Servicio_Usuarios/build/ci --output-on-failure
+
+  metadata:
+    name: Metadata (memory mode) - build, CTest
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assert metadata source is versioned
+        run: test -f tecflix-metadata/services/metadata-service/CMakeLists.txt
+      - name: Configure
+        run: >-
+          cmake -S tecflix-metadata/services/metadata-service
+          -B tecflix-metadata/services/metadata-service/build/ci
+          -DCMAKE_BUILD_TYPE=Debug
+          -DMETADATA_BUILD_TESTS=ON
+          -DMETADATA_ENABLE_MONGO=OFF
+          -DTECFLIX_REAL_TELEMETRY=OFF
+      - name: Build
+        run: cmake --build tecflix-metadata/services/metadata-service/build/ci --parallel 3
+      - name: Run tests
+        run: ctest --test-dir tecflix-metadata/services/metadata-service/build/ci --output-on-failure

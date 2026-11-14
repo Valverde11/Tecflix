@@ -1,5 +1,6 @@
 #include "tecflix/metadata/api_server.hpp"
-
+#include "shared/observability/http_metrics.hpp"
+#include <memory>
 #include <utility>
 
 namespace tecflix::metadata {
@@ -20,6 +21,31 @@ ApiServer::ApiServer(CatalogService& service, std::string cors_origin,
   ConfigureCors();
   health_controller_.RegisterRoutes(server_);
   video_controller_.RegisterRoutes(server_);
+}
+
+void ApiServer::EnableMetrics(MetricsCallBack callback) {
+  metrics_tracker_ =
+      std::make_shared<tecflix::observability::HttpMetricsTracker>(
+          std::move(callback)
+      );
+
+  const auto tracker = metrics_tracker_;
+
+  server_.set_pre_routing_handler(
+      [tracker](const httplib::Request& request,
+                httplib::Response&) {
+          tracker->Begin(request);
+
+          return httplib::Server::HandlerResponse::Unhandled;
+      }
+  );
+
+  server_.set_logger(
+      [tracker](const httplib::Request& request,
+                const httplib::Response& response) {
+          tracker->End(request, response);
+      }
+  );
 }
 
 // El navegador exige CORS porque la web (puerto 5173) llama a otro puerto. Se autoriza un

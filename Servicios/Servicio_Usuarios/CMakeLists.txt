@@ -48,6 +48,7 @@ add_library(user_service_core
     src/user_controller.cpp
 )
 target_include_directories(user_service_core PUBLIC include)
+target_include_directories(user_service_core PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../..")
 target_link_libraries(user_service_core
     PUBLIC
         httplib::httplib
@@ -58,7 +59,17 @@ target_link_libraries(user_service_core
         user_service_warnings
 )
 
+option(TECFLIX_REAL_TELEMETRY "Exportar métricas reales de usuarios a OTLP" ON)
+if(TECFLIX_REAL_TELEMETRY)
+    add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../observability/telemetry"
+                     "${CMAKE_CURRENT_BINARY_DIR}/observability-telemetry")
+endif()
+
 add_executable(user-service src/main.cpp)
+if(TECFLIX_REAL_TELEMETRY)
+    target_compile_definitions(user-service PRIVATE TECFLIX_REAL_TELEMETRY=1)
+    target_link_libraries(user-service PRIVATE tecflix_telemetry)
+endif()
 target_link_libraries(user-service PRIVATE user_service_core user_service_warnings)
 
 if(USER_SERVICE_BUILD_TESTS)

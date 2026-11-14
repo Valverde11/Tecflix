@@ -1,13 +1,16 @@
 #pragma once
 
 #include <httplib.h>
-
+#include <functional>
+#include <memory>
 #include <string>
-
 #include "tecflix/metadata/catalog_service.hpp"
 #include "tecflix/metadata/health_controller.hpp"
 #include "tecflix/metadata/video_controller.hpp"
 
+namespace tecflix::observability{
+  class HttpMetricsTracker;
+}
 namespace tecflix::metadata {
 
 // Servidor HTTP del servicio: es dueño del httplib::Server y registra las rutas de todos
@@ -17,6 +20,9 @@ class ApiServer {
  public:
   // `service` debe vivir más que el servidor. `cors_origin` es el único origen web
   // autorizado (la aplicación React); viene de CORS_ORIGIN.
+  using MetricsCallBack = std::function<void(const std::string&, const std::string&, int, double)>;
+
+  void EnableMetrics(MetricsCallBack callback);
   ApiServer(CatalogService& service, std::string cors_origin, std::string auth_secret);
 
   ApiServer(const ApiServer&) = delete;
@@ -33,6 +39,8 @@ class ApiServer {
 
  private:
   void ConfigureCors();
+
+  std::shared_ptr<tecflix::observability::HttpMetricsTracker> metrics_tracker_;
 
   httplib::Server server_;
   std::string cors_origin_;

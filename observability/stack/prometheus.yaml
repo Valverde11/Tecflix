@@ -27,9 +27,17 @@ scrape_configs:
     params:
       module: [http_2xx]
     static_configs:
-      - targets: ["http://host.docker.internal:8090/health"]
+      - targets: ["http://host.docker.internal:8081/health"]
         labels:
-          service_name: sample-service
+          service_name: user-service
+          service_instance_id: local-dev
+      - targets: ["http://host.docker.internal:8082/health"]
+        labels:
+          service_name: metadata-service
+          service_instance_id: local-dev
+      - targets: ["http://host.docker.internal:8083/health"]
+        labels:
+          service_name: streaming-service
           service_instance_id: local-dev
     relabel_configs:
       - source_labels: [__address__]
