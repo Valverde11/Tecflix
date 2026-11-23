@@ -1,29 +1,3 @@
-# Compilación C++ (CMake / vcpkg / Visual Studio)
-build/
-out/
-vcpkg_installed/
-.vs/
-CMakeUserPresets.json
-
-# Datos de la API de usuarios (archivos binarios generados en ejecución)
-Servicios/Servicio_Usuarios/data/
-*.dat
-*.idx
-
-# Aplicación web
-node_modules/
-dist/
-coverage/
-
-# Secretos y configuración local
-.env
-.env.*
-!.env.example
-
-# Resultados de Playwright
-test-results/
-playwright-report/
-
 
 # ==========================================
 # 1. Sistema operativo
@@ -91,6 +65,10 @@ blob-report/
 # ==========================================
 build/
 cmake-build-*/
+out/
+.vs/
+vcpkg_installed/
+CMakeUserPresets.json
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -127,7 +105,10 @@ Testing/
 # ==========================================
 # 8. API de usuarios: datos de ejecución
 # ==========================================
-/services/user-service/data/
+/Servicios/Servicio_Usuarios/data/
+# Archivo binario de usuarios e índices del árbol B: nunca se versionan.
+*.dat
+*.idx
 
 # ==========================================
 # 9. API de streaming: archivos generados
@@ -158,7 +139,3 @@ load-tests/reports/
 # 12. Configuración local de herramientas
 # ==========================================
 *.local
-
-# Resultados de Playwright
-test-results/
-playwright-report/
