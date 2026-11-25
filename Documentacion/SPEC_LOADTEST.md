@@ -2,7 +2,7 @@
 
 Este documento define el alcance y las decisiones para las pruebas de carga de Tecflix. Complementa `SPEC.md` y `SPEC_DASHBOARD.md`; si hay una contradicción, prevalece `SPEC.md`. Es la fuente de verdad para cualquier implementación de load testing que se agregue en prompts posteriores.
 
-**Estado:** especificación inicial; todavía no hay scripts ni configuración de load testing en el repositorio.  
+**Estado:** implementación inicial en `loadtest/`; revisar `GUIA_LOADTEST.md` para el alcance validado y las limitaciones vigentes.
 **Alcance:** carga y estrés de las APIs de Tecflix y comparación de topologías. No define cambios a la lógica de negocio.
 
 ## 1. Objetivo
@@ -13,7 +13,7 @@ Medir el comportamiento de Tecflix bajo usuarios concurrentes y obtener evidenci
 2. Comparar un despliegue de una instancia con otro de dos instancias detrás de un balanceador.
 3. Relacionar resultados con las métricas de `observability/` y las optimizaciones que se implementen.
 
-La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancias. `SPEC_DASHBOARD.md` propone k6 para producir tráfico y observar el dashboard; la herramienta final queda pendiente de confirmación mediante una decisión registrada abajo.
+La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancias. `SPEC_DASHBOARD.md` propone k6 para producir tráfico y observar el dashboard; se adopta k6 para esta implementación.
 
 ## 2. Alcance y límites
 
@@ -23,6 +23,7 @@ La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancia
 - Ejecución repetible y parámetros explícitos para duración, concurrencia, destino y topología.
 - Medición de latencia, throughput y errores de las solicitudes; correlación con métricas de Prometheus/Grafana cuando el stack esté disponible.
 - Comparación equivalente de una instancia frente a dos instancias con balanceador.
+- Perfil de capacidad limitado para proteger los entornos de prueba y un escenario separado para medir el login.
 - Documentación de condiciones, resultados y limitaciones para que las comparaciones sean interpretables.
 
 ### Fuera de alcance inicial
@@ -31,6 +32,7 @@ La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancia
 - Probar una instancia o servicio de terceros sin autorización.
 - Borrar o alterar datos compartidos del equipo durante una ejecución.
 - Fijar objetivos numéricos de latencia, throughput, concurrencia o disponibilidad sin acuerdo explícito.
+- Levantar o configurar automáticamente las dos topologías: deben estar desplegadas y preparadas por el equipo.
 
 ## 3. Requisitos
 
@@ -51,16 +53,20 @@ La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancia
 - Se puede comparar una instancia con dos instancias detrás del balanceador sin cambiar el escenario.
 - La documentación explica limitaciones y no atribuye causalidad a métricas que solo sean correlativas.
 - Ningún umbral de aprobación se considera acordado hasta quedar escrito en esta sección y en la memoria del agente.
+- El perfil de capacidad tiene límites operativos definidos por el propio harness; estos límites controlan el generador y no representan objetivos de rendimiento del sistema.
 
-## 5. Decisiones pendientes
+## 5. Decisiones
 
-- Herramienta de carga (k6 es la opción sugerida por `SPEC_DASHBOARD.md`; Locust y JMeter aparecen como alternativas en `SPEC.md`).
-- Rutas concretas y datos de prueba por escenario.
-- Entorno/topología automatizada para las dos configuraciones comparadas.
-- Perfil de usuarios, duración y criterios cuantitativos de aceptación.
-- Si las pruebas se ejecutan localmente, en CI o en ambos.
+- **Herramienta:** k6, por ser la recomendación de `SPEC_DASHBOARD.md` y permitir escenarios repetibles con métricas HTTP.
+- **Rutas funcionales de solo lectura:** `/api/users/me`, `/api/users/:id/quota`, `/api/metadata/videos`, `/api/metadata/videos/:id`, `/api/videos/:id`, el manifiesto HLS y un segmento. El harness no sube ni borra videos y no modifica cuentas/cuotas.
+- **Autenticación:** usar una cuenta de prueba existente mediante variables de entorno; el mismo token de esa cuenta se reutiliza por VU en el flujo de solo lectura.
+- **Datos de streaming:** proporcionar un video conocido, listo y accesible con la cuenta de prueba para validar manifiesto y segmento.
+- **Topologías:** el runner de comparación recibe URLs de las tres APIs de una instancia y de dos instancias detrás del balanceador. No crea infraestructura ni presupone que los datos de las máquinas estén replicados.
+- **Protección del destino:** por defecto se aceptan destinos locales o de red privada; destinos externos requieren habilitación explícita. Los perfiles tienen límites conservadores y documentados.
+- **Ejecución:** manual/local contra un ambiente de prueba autorizado. CI no genera carga contra servicios.
+- **Pendiente:** el equipo debe elegir los umbrales de desempeño y la duración/perfil oficial de la campaña que se usará para reportar los límites V2.
 
-No resolver estas decisiones mediante suposiciones silenciosas. Cuando un prompt las aclare, actualizar esta especificación y registrar brevemente la decisión en la memoria.
+No resolver las decisiones pendientes mediante suposiciones silenciosas. Cuando un prompt las aclare, actualizar esta especificación y registrar brevemente la decisión en la memoria.
 
 ## Agent instructions
 
@@ -74,7 +80,9 @@ No resolver estas decisiones mediante suposiciones silenciosas. Cuando un prompt
 
 ## Agent memory
 
-- La necesidad inicial proviene de `SPEC.md` §4.3: simular usuarios concurrentes y comparar una instancia con dos detrás de un balanceador.
-- `SPEC_DASHBOARD.md` sugiere k6 y el uso de Grafana como evidencia; la herramienta todavía no está aprobada para esta implementación.
-- Al crear esta especificación no existen scripts ni configuración de load testing identificados en el repositorio; por eso esta versión documenta requisitos, no capacidades ya disponibles.
-- No se han definido rutas de carga, límites numéricos, perfiles de concurrencia ni criterios cuantitativos de éxito; no asumirlos.
+- `SPEC.md` §4.3 y el PDF del proyecto V2 requieren determinar y documentar límites mediante pruebas concurrentes, comparando uno y dos servidores.
+- Se eligió k6 por la recomendación de `SPEC_DASHBOARD.md`; la ejecución se hace manualmente contra ambientes autorizados, no en CI.
+- El flujo principal solo lee datos y requiere cuenta de prueba y video ya listo para no mutar cuotas, usuarios ni almacenamiento.
+- El runner de comparación usa endpoints ya desplegados; no levanta ni replica APIs, MongoDB, almacenamiento HLS o balanceadores.
+- El generador está limitado por defecto; aumentar la carga es decisión deliberada mediante variables de entorno. Los límites de VUs/duración no son metas de rendimiento.
+- No se han acordado umbrales de latencia/throughput ni la campaña definitiva para reportar capacidad V2.
