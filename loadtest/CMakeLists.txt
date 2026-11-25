@@ -19,6 +19,7 @@ endif()
 add_library(tecflix-loadtest-core
     src/config.cpp
     src/metrics.cpp
+    src/runner.cpp
 )
 target_include_directories(tecflix-loadtest-core
     PUBLIC include
@@ -44,4 +45,10 @@ if(BUILD_TESTING)
     add_executable(tecflix-loadtest-metrics-tests tests/metrics_test.cpp)
     target_link_libraries(tecflix-loadtest-metrics-tests PRIVATE tecflix-loadtest-core)
     add_test(NAME TecflixLoadtestMetrics COMMAND tecflix-loadtest-metrics-tests)
+
+    add_executable(tecflix-loadtest-runner-tests tests/runner_test.cpp)
+    target_link_libraries(tecflix-loadtest-runner-tests
+        PRIVATE tecflix-loadtest-core httplib::httplib
+    )
+    add_test(NAME TecflixLoadtestRunner COMMAND tecflix-loadtest-runner-tests)
 endif()
