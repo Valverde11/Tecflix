@@ -133,8 +133,6 @@ Testing/
 # 11. Archivos locales de pruebas de carga
 # ==========================================
 load-tests/results/
-/loadtest/results/
-/loadtest/**/__pycache__/
 load-tests/reports/
 
 # ==========================================
