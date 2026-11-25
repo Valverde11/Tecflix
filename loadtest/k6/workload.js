@@ -18,15 +18,21 @@ if (!/^[a-f0-9]{32}$/.test(videoId)) {
 
 export const options = testProfile('journey');
 
-const requestParams = {
-  headers: { Accept: 'application/json' },
-  timeout: '10s',
-};
-
 function expectOk(response, label) {
   check(response, {
     [`${label} responde HTTP 200`]: (result) => result.status === 200,
   });
+}
+
+function authParams(name, token) {
+  return {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    timeout: '10s',
+    tags: { name },
+  };
 }
 
 export function setup() {
@@ -54,42 +60,40 @@ export function setup() {
 }
 
 export default function (data) {
-  const authParams = {
-    ...requestParams,
-    headers: {
-      ...requestParams.headers,
-      Authorization: `Bearer ${data.token}`,
-    },
-  };
-
   group('Tecflix: recorrido funcional de solo lectura', () => {
-    const profile = http.get(`${usersUrl}/api/users/me`, authParams);
+    const profile = http.get(
+      `${usersUrl}/api/users/me`,
+      authParams('GET /api/users/me', data.token),
+    );
     expectOk(profile, 'Perfil del usuario');
 
     const quota = http.get(
       `${usersUrl}/api/users/${data.userId}/quota`,
-      authParams,
+      authParams('GET /api/users/:id/quota', data.token),
     );
     expectOk(quota, 'Cuota del usuario');
 
     const catalog = http.get(
       `${metadataUrl}/api/metadata/videos?page=1&page_size=20&mine=true`,
-      authParams,
+      authParams('GET /api/metadata/videos', data.token),
     );
     expectOk(catalog, 'Catálogo de metadata');
 
     const metadata = http.get(
       `${metadataUrl}/api/metadata/videos/${videoId}`,
-      authParams,
+      authParams('GET /api/metadata/videos/:id', data.token),
     );
     expectOk(metadata, 'Metadata del video');
 
-    const status = http.get(`${streamingUrl}/api/videos/${videoId}`, authParams);
+    const status = http.get(
+      `${streamingUrl}/api/videos/${videoId}`,
+      authParams('GET /api/videos/:id', data.token),
+    );
     expectOk(status, 'Estado de streaming');
 
     const manifest = http.get(
       `${streamingUrl}/api/videos/${videoId}/index.m3u8`,
-      authParams,
+      authParams('GET /api/videos/:id/index.m3u8', data.token),
     );
     const manifestOk = check(manifest, {
       'Manifiesto HLS responde HTTP 200': (result) => result.status === 200,
@@ -103,11 +107,7 @@ export default function (data) {
       ) || [])[1];
       const segmentResponse = http.get(
         `${streamingUrl}/api/videos/${videoId}/segments/${segment}`,
-        {
-          ...authParams,
-          headers: { Authorization: `Bearer ${data.token}` },
-          tags: { name: 'GET /api/videos/:id/segments/:segment' },
-        },
+        authParams('GET /api/videos/:id/segments/:segment', data.token),
       );
       check(segmentResponse, {
         'Segmento HLS responde HTTP 200': (result) => result.status === 200,

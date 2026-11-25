@@ -54,10 +54,14 @@ export function targetUrl(name, fallback) {
   }
 
   const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (__ENV.LOADTEST_ALLOW_REMOTE !== 'true' && !isLocalHost(host)) {
+  const allowedHosts = (__ENV.LOADTEST_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((allowedHost) => allowedHost.trim().toLowerCase())
+    .filter(Boolean);
+  if (!isLocalHost(host) && !allowedHosts.includes(host)) {
     throw new Error(
-      `${name} apunta a un host externo; use solo ambientes autorizados y defina ` +
-        'LOADTEST_ALLOW_REMOTE=true para permitirlo explícitamente',
+      `${name} apunta a un host externo; agregue el hostname exacto a ` +
+        'LOADTEST_ALLOWED_HOSTS solo para un ambiente autorizado',
     );
   }
 
@@ -77,14 +81,16 @@ export function testProfile(workload) {
   }
 
   const maxAllowed = workload === 'login' ? 10 : 50;
-  const configuredMax = Number(__ENV.LOADTEST_MAX_VUS || maxAllowed);
+  const maxVariable =
+    workload === 'login' ? 'LOADTEST_LOGIN_MAX_VUS' : 'LOADTEST_MAX_VUS';
+  const configuredMax = Number(__ENV[maxVariable] || (workload === 'login' ? 10 : 20));
   if (
     !Number.isInteger(configuredMax) ||
     configuredMax < 1 ||
     configuredMax > maxAllowed
   ) {
     throw new Error(
-      `LOADTEST_MAX_VUS debe ser un entero entre 1 y ${maxAllowed} para ${workload}`,
+      `${maxVariable} debe ser un entero entre 1 y ${maxAllowed}`,
     );
   }
 
