@@ -134,6 +134,7 @@ Testing/
 # ==========================================
 load-tests/results/
 /loadtest/results/
+/loadtest/**/__pycache__/
 load-tests/reports/
 
 # ==========================================

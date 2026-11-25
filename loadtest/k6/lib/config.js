@@ -27,7 +27,6 @@ function isLocalHost(host) {
     host.endsWith('.localhost') ||
     host.endsWith('.local') ||
     host.endsWith('.test') ||
-    !host.includes('.') ||
     isPrivateIPv4(host) ||
     /^f[cd][0-9a-f]{2}:/i.test(host)
   );
@@ -60,7 +59,7 @@ export function targetUrl(name, fallback) {
     .filter(Boolean);
   if (!isLocalHost(host) && !allowedHosts.includes(host)) {
     throw new Error(
-      `${name} apunta a un host externo; agregue el hostname exacto a ` +
+      `${name} apunta a un host no permitido; agregue el hostname exacto a ` +
         'LOADTEST_ALLOWED_HOSTS solo para un ambiente autorizado',
     );
   }
@@ -76,8 +75,8 @@ export function requiredEnv(name) {
 
 export function testProfile(workload) {
   const profile = __ENV.LOADTEST_PROFILE || 'smoke';
-  if (!['smoke', 'capacity'].includes(profile)) {
-    throw new Error('LOADTEST_PROFILE debe ser smoke o capacity');
+  if (!['smoke', 'capacity', 'fixed'].includes(profile)) {
+    throw new Error('LOADTEST_PROFILE debe ser smoke, capacity o fixed');
   }
 
   const maxAllowed = workload === 'login' ? 10 : 50;
@@ -96,36 +95,43 @@ export function testProfile(workload) {
 
   const stageDuration = Number(__ENV.LOADTEST_STAGE_DURATION_SECONDS || 30);
   if (
-    profile === 'capacity' &&
+    profile !== 'smoke' &&
     (!Number.isInteger(stageDuration) || stageDuration < 10 || stageDuration > 300)
   ) {
     throw new Error('LOADTEST_STAGE_DURATION_SECONDS debe ser un entero entre 10 y 300');
   }
 
-  const stages =
-    profile === 'smoke'
-      ? [{ duration: '10s', target: 1 }]
-      : [
-          ...new Set(
-            [5, 10, 20, 30, 40, configuredMax].map((target) =>
-              Math.min(target, configuredMax),
-            ),
-          ),
-        ].map((target) => ({
+  const capacityStages = [
+    ...new Set(
+      [5, 10, 20, 30, 40, configuredMax].map((target) =>
+        Math.min(target, configuredMax),
+      ),
+    ),
+  ].map((target) => ({
+    duration: `${stageDuration}s`,
+    target,
+  }));
+  const scenario =
+    profile === 'fixed'
+      ? {
+          executor: 'constant-vus',
+          vus: configuredMax,
           duration: `${stageDuration}s`,
-          target,
-        }));
-  const finalStages =
-    profile === 'smoke' ? stages : [...stages, { duration: '10s', target: 0 }];
+          gracefulStop: '10s',
+        }
+      : {
+          executor: 'ramping-vus',
+          startVUs: 1,
+          stages:
+            profile === 'smoke'
+              ? [{ duration: '10s', target: 1 }]
+              : [...capacityStages, { duration: '10s', target: 0 }],
+          gracefulRampDown: '5s',
+        };
 
   return {
     scenarios: {
-      [workload]: {
-        executor: 'ramping-vus',
-        startVUs: 1,
-        stages: finalStages,
-        gracefulRampDown: '5s',
-      },
+      [workload]: scenario,
     },
     thresholds: {
       checks: ['rate==1'],

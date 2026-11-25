@@ -20,13 +20,15 @@ test('allows local and private-network targets by default', () => {
   assert.equal(targetUrl('STREAMING_URL', ''), 'http://[fd12::1]:8083');
 });
 
-test('requires explicit opt-in for public hosts', () => {
+test('requires an exact allowlist entry for non-local hosts', () => {
   globalThis.__ENV = { USERS_URL: 'https://api.example.com' };
   assert.throws(() => targetUrl('USERS_URL', ''), /LOADTEST_ALLOWED_HOSTS/);
 
   globalThis.__ENV.LOADTEST_ALLOWED_HOSTS = 'api.example.com';
   assert.equal(targetUrl('USERS_URL', ''), 'https://api.example.com');
   globalThis.__ENV.USERS_URL = 'https://other.example.com';
+  assert.throws(() => targetUrl('USERS_URL', ''), /LOADTEST_ALLOWED_HOSTS/);
+  globalThis.__ENV.USERS_URL = 'http://users-service:8081';
   assert.throws(() => targetUrl('USERS_URL', ''), /LOADTEST_ALLOWED_HOSTS/);
 });
 
@@ -67,6 +69,21 @@ test('ramps capacity through the configured concurrency levels', () => {
     { duration: '60s', target: 20 },
     { duration: '10s', target: 0 },
   ]);
+});
+
+test('holds a fixed number of VUs for a repeatable comparison step', () => {
+  globalThis.__ENV = {
+    LOADTEST_PROFILE: 'fixed',
+    LOADTEST_MAX_VUS: '10',
+    LOADTEST_STAGE_DURATION_SECONDS: '45',
+  };
+
+  assert.deepEqual(testProfile('journey').scenarios.journey, {
+    executor: 'constant-vus',
+    vus: 10,
+    duration: '45s',
+    gracefulStop: '10s',
+  });
 });
 
 test('rejects capacity stages outside the supported duration range', () => {
