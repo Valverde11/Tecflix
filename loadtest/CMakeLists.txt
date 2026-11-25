@@ -18,6 +18,7 @@ endif()
 
 add_library(tecflix-loadtest-core
     src/config.cpp
+    src/metrics.cpp
 )
 target_include_directories(tecflix-loadtest-core
     PUBLIC include
@@ -36,7 +37,11 @@ else()
 endif()
 
 if(BUILD_TESTING)
-    add_executable(tecflix-loadtest-tests tests/config_test.cpp)
-    target_link_libraries(tecflix-loadtest-tests PRIVATE tecflix-loadtest-core)
-    add_test(NAME TecflixLoadtest COMMAND tecflix-loadtest-tests)
+    add_executable(tecflix-loadtest-config-tests tests/config_test.cpp)
+    target_link_libraries(tecflix-loadtest-config-tests PRIVATE tecflix-loadtest-core)
+    add_test(NAME TecflixLoadtestConfig COMMAND tecflix-loadtest-config-tests)
+
+    add_executable(tecflix-loadtest-metrics-tests tests/metrics_test.cpp)
+    target_link_libraries(tecflix-loadtest-metrics-tests PRIVATE tecflix-loadtest-core)
+    add_test(NAME TecflixLoadtestMetrics COMMAND tecflix-loadtest-metrics-tests)
 endif()
