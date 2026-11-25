@@ -133,6 +133,7 @@ Testing/
 # 11. Archivos locales de pruebas de carga
 # ==========================================
 load-tests/results/
+/loadtest/results/
 load-tests/reports/
 
 # ==========================================
