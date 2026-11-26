@@ -65,7 +65,7 @@ TEST_F(AuthServiceTest, ValidatesATokenFromAnIndependentImplementation) {
 
 TEST_F(AuthServiceTest, ValidatesTokensOfEveryPayloadLength) {
   // Tres longitudes seguidas cubren los tres casos de relleno de Base64.
-  for (const std::string& username : {"Ana", "Anaa", "Anaaa"}) {
+  for (const std::string username : {"Ana", "Anaa", "Anaaa"}) {
     UserProfile profile = Ana();
     profile.username = username;
 
