@@ -1,4 +1,5 @@
 #include "tecflix/users/api_server.hpp"
+#include "shared/http/thread_pool.hpp"
 #include "shared/observability/http_metrics.hpp"
 
 #include <exception>
@@ -24,6 +25,8 @@ constexpr const char* kPreflightCacheSeconds = "600";
 ApiServer::ApiServer(UserController& users, const std::string& cors_origin) {
   ConfigureCors(cors_origin);
   server_.set_payload_max_length(kMaxBodyBytes);
+  // Pool dinámico: con keep-alive cada cliente conectado ocupa un hilo (ver thread_pool.hpp).
+  tecflix::http::ConfigureThreadPool(server_);
   server_.set_exception_handler([](const httplib::Request&,
                                    httplib::Response& response,
                                    std::exception_ptr error) {

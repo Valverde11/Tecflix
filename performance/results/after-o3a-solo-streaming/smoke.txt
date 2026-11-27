@@ -1,0 +1,42 @@
+time="2026-11-26T21:52:16-06:00" level=warning msg="There were unknown fields in the options exported in the script" error="json: unknown field \"maxDuration\""
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate==1' rate=100.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 9       8.456974/s
+    checks_succeeded...: 100.00% 9 out of 9
+    checks_failed......: 0.00%   0 out of 9
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=31.891184 min=31.891184 med=31.891184 max=31.891184 p(90)=31.891184 p(95)=31.891184 p(99)=31.891184
+    load_metadata_video_duration_ms.......: avg=0.888425  min=0.888425  med=0.888425  max=0.888425  p(90)=0.888425  p(95)=0.888425  p(99)=0.888425 
+    load_streaming_manifest_duration_ms...: avg=1.406539  min=1.406539  med=1.406539  max=1.406539  p(90)=1.406539  p(95)=1.406539  p(99)=1.406539 
+    load_streaming_segment_duration_ms....: avg=20.759829 min=20.759829 med=20.759829 max=20.759829 p(90)=20.759829 p(95)=20.759829 p(99)=20.759829
+    load_streaming_status_duration_ms.....: avg=1.402997  min=1.402997  med=1.402997  max=1.402997  p(90)=1.402997  p(95)=1.402997  p(99)=1.402997 
+    load_users_profile_duration_ms........: avg=1.801797  min=1.801797  med=1.801797  max=1.801797  p(90)=1.801797  p(95)=1.801797  p(99)=1.801797 
+    load_users_quota_duration_ms..........: avg=0.246102  min=0.246102  med=0.246102  max=0.246102  p(90)=0.246102  p(95)=0.246102  p(99)=0.246102 
+
+    HTTP
+    http_req_duration.....................: avg=5.94ms    min=231.74µs  med=1.14ms    max=31.89ms   p(90)=21.87ms   p(95)=26.88ms   p(99)=30.88ms  
+    http_req_failed.......................: 0.00%  0 out of 10
+    http_reqs.............................: 10     9.396638/s
+
+    EXECUTION
+    iteration_duration....................: avg=1.06s     min=1.06s     med=1.06s     max=1.06s     p(90)=1.06s     p(95)=1.06s     p(99)=1.06s    
+    iterations............................: 1      0.939664/s
+    vus...................................: 1      min=1       max=1
+    vus_max...............................: 1      min=1       max=1
+
+    NETWORK
+    data_received.........................: 2.6 MB 2.4 MB/s
+    data_sent.............................: 2.3 kB 2.1 kB/s
+
+
+

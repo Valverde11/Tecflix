@@ -1,4 +1,5 @@
 #include "tecflix/metadata/api_server.hpp"
+#include "shared/http/thread_pool.hpp"
 #include "shared/observability/http_metrics.hpp"
 #include <memory>
 #include <utility>
@@ -18,6 +19,8 @@ ApiServer::ApiServer(CatalogService& service, std::string cors_origin,
       jwt_validator_(std::move(auth_secret)),
       video_controller_(service, jwt_validator_) {
   server_.set_payload_max_length(kMaxBodyBytes);
+  // Pool dinámico: con keep-alive cada cliente conectado ocupa un hilo (ver thread_pool.hpp).
+  tecflix::http::ConfigureThreadPool(server_);
   ConfigureCors();
   health_controller_.RegisterRoutes(server_);
   video_controller_.RegisterRoutes(server_);

@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 123894  2268.722636/s
+    checks_succeeded...: 100.00% 123894 out of 123894
+    checks_failed......: 0.00%   0 out of 123894
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=178.128964 min=0.056891      med=75.570222 max=7699.12823  p(90)=103.60626 p(95)=115.195742 p(99)=7198.944201
+    load_metadata_video_duration_ms.......: avg=30.691216  min=-7605.005219  med=8.768099  max=7625.31863  p(90)=20.030732 p(95)=26.120014  p(99)=43.405262  
+    load_streaming_manifest_duration_ms...: avg=30.041641  min=-7605.040729  med=9.96244   max=7624.937895 p(90)=22.056467 p(95)=28.016078  p(99)=45.765133  
+    load_streaming_segment_duration_ms....: avg=36.859661  min=-7620.945593  med=18.129544 max=7626.317526 p(90)=39.755323 p(95)=51.302713  p(99)=72.890092  
+    load_streaming_status_duration_ms.....: avg=38.609965  min=0.049         med=10.214909 max=7637.317251 p(90)=22.335654 p(95)=28.139246  p(99)=45.925113  
+    load_users_profile_duration_ms........: avg=6.350768   min=-7627.249991  med=0.743497  max=7161.400578 p(90)=4.256651  p(95)=6.826076   p(99)=13.603351  
+    load_users_quota_duration_ms..........: avg=0.555861   min=-7610.335279  med=0.503528  max=7134.188756 p(90)=2.72097   p(95)=4.340559   p(99)=10.439737  
+
+    HTTP
+    http_req_duration.....................: avg=45.88ms    min=-7627249991ns med=9.18ms    max=7.69s       p(90)=68.27ms   p(95)=83.91ms    p(99)=113.76ms   
+    http_req_failed.......................: 0.00% 0 out of 96365
+    http_reqs.............................: 96365 1764.616985/s
+
+    EXECUTION
+    iteration_duration....................: avg=139.63ms   min=59.25ms       med=136.73ms  max=281.33ms    p(90)=176.28ms  p(95)=189.04ms   p(99)=215.67ms   
+    iterations............................: 13766 252.080293/s
+    vus...................................: 32    min=32         max=32
+    vus_max...............................: 32    min=32         max=32
+
+    NETWORK
+    data_received.........................: 35 GB 645 MB/s
+    data_sent.............................: 28 MB 518 kB/s
+
+
+

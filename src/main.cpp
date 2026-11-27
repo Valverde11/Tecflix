@@ -1,5 +1,6 @@
 #include "tecflix/VideoService.h"
 #include "tecflix/QuotaClient.h"
+#include "shared/http/thread_pool.hpp"
 #ifdef TECFLIX_REAL_TELEMETRY
 #include "tecflix/telemetry/telemetry.hpp"
 #endif
@@ -101,7 +102,9 @@ int main() {
 #endif
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);
-    server.new_task_queue = [] { return new httplib::ThreadPool(8); };
+    // Antes: ThreadPool(8) fijo. Con 32-64 clientes keep-alive, 8 hilos quedaban tomados
+    // por conexiones ociosas y el resto vencía en la cola (ver shared/http/thread_pool.hpp).
+    tecflix::http::ConfigureThreadPool(server);
     videos.register_routes(server);
 
     const auto port = server_port();
