@@ -4,7 +4,9 @@ Esta guía describe la implementación C++ de pruebas de carga en `loadtest/`, s
 
 ## 1. Estado actual
 
-**Implementación disponible:** ejecutable C++17 `tecflix-loadtest`, con pruebas CMake/CTest. Permite generar concurrencia y comparar dos topologías configuradas. No se han registrado todavía campañas ni resultados reales de despliegues V1/V2.
+**Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`.
+
+**Aún no implementado:** topologías Nginx/Docker, nuevos topes de 200/50 VUs, umbrales de degradación 1%/2000 ms, pruebas de argumentos/reportes y job de CI con cobertura. Por eso los comandos actuales deben respetar los límites actuales de 50 VUs read-only y 10 login, y `capacity` todavía se detiene ante cualquier fallo. No se han registrado campañas ni resultados reales de despliegues V1/V2.
 
 El PDF V2 pide encontrar límites mediante carga/estrés concurrente y comparar uno contra dos servidores: observar cuándo se afecta el rendimiento y cuándo se rechazan solicitudes. El harness es C++ nativo (no k6); el dashboard puede aportar evidencia complementaria, pero no es requisito para compilar o ejecutar el generador.
 
@@ -22,15 +24,16 @@ Las topologías, cuentas de prueba y video deben estar preparados por el equipo 
 
 ## 3. Cómo se interpretará una ejecución
 
-`smoke` ejecuta una etapa con 1 usuario virtual; `fixed` mantiene el máximo configurado; `capacity` recorre niveles crecientes (1, 5, 10, 20, 30, 40 y máximo, sin duplicados). El máximo es 50 VUs en read-only y 10 en login; cada etapa dura entre 1 y 300 segundos. No son metas ni umbrales de desempeño.
+**Implementado hoy:** `smoke` ejecuta una etapa con 1 usuario virtual; `fixed` mantiene el máximo configurado; `capacity` recorre niveles crecientes (1, 5, 10, 20, 30, 40 y máximo, sin duplicados). Los topes actuales son 50 VUs en read-only y 10 en login; cada etapa dura entre 1 y 300 segundos. No son metas ni umbrales de desempeño.
 
-El runner ejecuta las dos configuraciones de forma secuencial con igual carga y alterna cuál inicia primero entre etapas. `capacity` termina el par `single`/`dual` del nivel donde ocurra el primer fallo y no escala más. El cooldown predeterminado para este perfil es 15 s, y el de otros perfiles 0 s.
+El runner ejecuta las dos configuraciones de forma secuencial con igual carga y alterna cuál inicia primero entre etapas. **Comportamiento actual:** `capacity` termina el par `single`/`dual` del nivel donde ocurra cualquier fallo y no escala más. **Decisión aprobada, aún pendiente:** cambiar esta regla al criterio configurable de >1% de fallos o p95 >2000 ms y reportar la etapa/causa. El cooldown predeterminado para `capacity` es 15 s, y para otros perfiles 0 s.
 
 Los fallos incluyen errores de red, respuestas no 2xx y respuestas exitosas con contenido que no satisface la validación del escenario. `rejected_requests` cuenta específicamente respuestas HTTP 429 y 503; el primer fallo observado puede ser otro estado o un error de red. El p50/p95 se estima con histogramas exponenciales por buckets y no es una medición de precisión arbitraria.
 
 ## 4. Seguridad y repetibilidad
 
-- Ejecutar únicamente contra servicios propios/locales o un entorno de prueba autorizado. Los hosts privados o locales se aceptan por defecto; un hostname externo debe figurar exacto en `LOADTEST_ALLOWED_HOSTS`.
+- Ejecutar únicamente contra servicios propios/locales o un entorno de prueba autorizado. Los hosts privados o locales se aceptan por defecto; en el parser actual, un hostname externo debe figurar exacto en `LOADTEST_ALLOWED_HOSTS`.
+- **Restricción aprobada pendiente de código:** el perfil `smoke` nunca debe apuntar a hosts externos, aunque estén en allowlist. Hasta que se aplique esta validación, no usar smoke contra un host externo.
 - No se permite HTTPS en esta versión del parser de destino; las URL con credenciales, rutas, queries o fragmentos se rechazan.
 - `read-only` no modifica registros; requiere credenciales de una cuenta existente y video existente listo en ambas topologías. El escenario `login` sí genera operaciones de autenticación.
 - No guardar credenciales, tokens ni reportes voluminosos en Git. La ruta recomendada para resultados es `load-tests/results/`.
@@ -52,7 +55,17 @@ Requiere CMake 3.20+, compilador C++17, Threads, nlohmann-json 3.11+ y cpp-httpl
 build/loadtest/tecflix-loadtest --help
 ```
 
-Credenciales se pasan solo como variables de entorno. Ejemplo de recorrido read-only contra los dos despliegues (reemplazar direcciones y datos por los de un ambiente autorizado):
+El CLI actualmente anuncia esta forma de invocación:
+
+```text
+tecflix-loadtest --single-users-url URL --dual-users-url URL --output DIR
+  [--single-metadata-url URL --single-streaming-url URL]
+  [--dual-metadata-url URL --dual-streaming-url URL]
+  [--profile smoke|fixed|capacity] [--scenario read-only|login]
+  [--max-vus N] [--stage-seconds N] [--cooldown-seconds N]
+```
+
+Los parámetros de umbral aún no están disponibles en el programa. Credenciales se pasan solo como variables de entorno. Ejemplo `read-only` con perfil `smoke` contra destinos locales (reemplazar direcciones y datos por servicios de prueba preparados):
 
 ```bash
 export LOADTEST_USERNAME='cuenta-de-prueba'
@@ -66,15 +79,25 @@ build/loadtest/tecflix-loadtest \
   --dual-users-url http://127.0.0.1:8181 \
   --dual-metadata-url http://127.0.0.1:8182 \
   --dual-streaming-url http://127.0.0.1:8183 \
-  --scenario read-only --profile capacity --max-vus 20 \
+  --scenario read-only --profile smoke --max-vus 1 --stage-seconds 10 \
   --output load-tests/results
 ```
 
-El escenario `login` solo requiere las URLs de Usuarios `single` y `dual`; no se le pasan metadata, streaming ni `LOADTEST_VIDEO_ID`. Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds` y `--cooldown-seconds` a la capacidad segura del entorno. Los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
+El escenario `login` solo requiere las URLs de Usuarios `single` y `dual`; no se le pasan metadata, streaming ni `LOADTEST_VIDEO_ID`:
+
+```bash
+build/loadtest/tecflix-loadtest \
+  --single-users-url http://127.0.0.1:8081 \
+  --dual-users-url http://127.0.0.1:8181 \
+  --scenario login --profile smoke --stage-seconds 10 \
+  --output load-tests/results
+```
+
+Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds` y `--cooldown-seconds` a la capacidad segura del entorno. Las corridas `smoke` deben ser solo locales/privadas. Para los perfiles actuales distintos de smoke, los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
 
 Cada ejecución crea un subdirectorio `run-<UTC timestamp>` dentro de `--output` con `comparison.json` y `comparison.csv`. JSON contiene configuración, métricas por etapa/ruta, diferencias entre topologías y primer nivel con fallos. CSV permite comparar solicitudes, errores, rechazos, throughput, p50/p95 y cambios porcentuales.
 
-La suite CTest incluye pruebas de configuración, histogramas/métricas, escenarios HTTP con APIs simuladas y comparación/reportes. Esas pruebas verifican el harness; no representan una campaña de desempeño sobre las APIs desplegadas.
+La suite CTest actual incluye pruebas de configuración, histogramas/métricas, escenarios HTTP con APIs simuladas y comparación/reportes. Aún faltan pruebas enfocadas de `WriteComparisonReport`/`Summarize` y del parseo CLI. Las pruebas existentes verifican el harness; no representan una campaña de desempeño sobre las APIs desplegadas ni acreditan cobertura objetivo.
 
 ## 6. Mantenimiento con nuevos prompts
 
