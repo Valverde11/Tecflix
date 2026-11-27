@@ -1,4 +1,5 @@
 #include "tecflix/loadtest/comparison.hpp"
+#include "tecflix/loadtest/cli.hpp"
 #include "tecflix/loadtest/config.hpp"
 #include "tecflix/loadtest/report.hpp"
 
@@ -7,7 +8,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
-#include <limits>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,185 +20,15 @@ namespace {
 
 using namespace tecflix::loadtest;
 
-struct Arguments {
-    std::string single_users_url;
-    std::string single_metadata_url;
-    std::string single_streaming_url;
-    std::string dual_users_url;
-    std::string dual_metadata_url;
-    std::string dual_streaming_url;
-    std::filesystem::path output_parent;
-    Profile profile = Profile::smoke;
-    Scenario scenario = Scenario::read_only_journey;
-    std::uint32_t max_virtual_users = 20;
-    std::chrono::seconds stage_duration{10};
-    std::chrono::seconds cooldown{0};
-    bool stage_duration_set = false;
-    bool max_virtual_users_set = false;
-    bool cooldown_set = false;
-};
-
-constexpr const char* kUsage =
-    "Uso:\n"
-    "  tecflix-loadtest --single-users-url URL --dual-users-url URL --output DIR\n"
-    "                    [--single-metadata-url URL --single-streaming-url URL]\n"
-    "                    [--dual-metadata-url URL --dual-streaming-url URL]\n"
-    "                    [--profile smoke|fixed|capacity] [--scenario read-only|login]\n"
-    "                    [--max-vus N] [--stage-seconds N] [--cooldown-seconds N]\n"
-    "\n"
-    "Credenciales (solo por entorno): LOADTEST_USERNAME y LOADTEST_PASSWORD.\n"
-    "El escenario read-only también requiere LOADTEST_VIDEO_ID (video listo).\n"
-    "Los destinos son HTTP y locales/privados; hosts externos exigen\n"
-    "LOADTEST_ALLOWED_HOSTS con nombres exactos y un entorno de prueba autorizado.\n";
-
-std::string RequiredEnvironment(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr || *value == '\0') {
-        throw std::invalid_argument(std::string("Falta variable requerida: ") + name);
-    }
-    return value;
-}
-
-std::vector<std::string> AllowedHostsFromEnvironment() {
-    const char* raw = std::getenv("LOADTEST_ALLOWED_HOSTS");
-    if (raw == nullptr || *raw == '\0') return {};
-
-    std::vector<std::string> hosts;
-    std::string value(raw);
-    std::size_t offset = 0;
-    while (offset <= value.size()) {
-        const auto delimiter = value.find(',', offset);
-        const auto end = delimiter == std::string::npos ? value.size() : delimiter;
-        auto host = value.substr(offset, end - offset);
-        const auto first = host.find_first_not_of(" \t");
-        if (first != std::string::npos) {
-            host = host.substr(first, host.find_last_not_of(" \t") - first + 1);
-            hosts.push_back(std::move(host));
-        }
-        if (delimiter == std::string::npos) break;
-        offset = delimiter + 1;
-    }
-    return hosts;
-}
-
-std::uint32_t ParsePositiveInteger(const std::string& value,
-                                  const std::string& option) {
-    std::size_t parsed = 0;
-    unsigned long number = 0;
-    try {
-        number = std::stoul(value, &parsed);
-    } catch (const std::exception&) {
-        throw std::invalid_argument(option + " requiere un entero positivo");
-    }
-    if (parsed != value.size() || number == 0 ||
-        number > std::numeric_limits<std::uint32_t>::max()) {
-        throw std::invalid_argument(option + " requiere un entero positivo válido");
-    }
-    return static_cast<std::uint32_t>(number);
-}
-
-std::string NextValue(int& index, int argc, char** argv,
-                      const std::string& option) {
-    if (index + 1 >= argc) {
-        throw std::invalid_argument("Falta el valor para " + option);
-    }
-    return argv[++index];
-}
-
-Arguments ParseArguments(int argc, char** argv) {
-    Arguments arguments;
-    for (int index = 1; index < argc; ++index) {
-        const std::string option = argv[index];
-        if (option == "--help" || option == "-h") {
-            std::cout << kUsage;
-            std::exit(0);
-        } else if (option == "--single-users-url") {
-            arguments.single_users_url = NextValue(index, argc, argv, option);
-        } else if (option == "--single-metadata-url") {
-            arguments.single_metadata_url = NextValue(index, argc, argv, option);
-        } else if (option == "--single-streaming-url") {
-            arguments.single_streaming_url = NextValue(index, argc, argv, option);
-        } else if (option == "--dual-users-url") {
-            arguments.dual_users_url = NextValue(index, argc, argv, option);
-        } else if (option == "--dual-metadata-url") {
-            arguments.dual_metadata_url = NextValue(index, argc, argv, option);
-        } else if (option == "--dual-streaming-url") {
-            arguments.dual_streaming_url = NextValue(index, argc, argv, option);
-        } else if (option == "--output") {
-            arguments.output_parent = NextValue(index, argc, argv, option);
-        } else if (option == "--profile") {
-            const auto value = NextValue(index, argc, argv, option);
-            if (value == "smoke") arguments.profile = Profile::smoke;
-            else if (value == "fixed") arguments.profile = Profile::fixed;
-            else if (value == "capacity") arguments.profile = Profile::capacity;
-            else throw std::invalid_argument("--profile debe ser smoke, fixed o capacity");
-        } else if (option == "--scenario") {
-            const auto value = NextValue(index, argc, argv, option);
-            if (value == "read-only") arguments.scenario = Scenario::read_only_journey;
-            else if (value == "login") arguments.scenario = Scenario::login;
-            else throw std::invalid_argument("--scenario debe ser read-only o login");
-        } else if (option == "--max-vus") {
-            arguments.max_virtual_users = ParsePositiveInteger(
-                NextValue(index, argc, argv, option), option);
-            arguments.max_virtual_users_set = true;
-        } else if (option == "--stage-seconds") {
-            arguments.stage_duration = std::chrono::seconds(
-                ParsePositiveInteger(NextValue(index, argc, argv, option), option));
-            arguments.stage_duration_set = true;
-        } else if (option == "--cooldown-seconds") {
-            const auto value = NextValue(index, argc, argv, option);
-            std::size_t parsed = 0;
-            unsigned long number = 0;
-            try {
-                number = std::stoul(value, &parsed);
-            } catch (const std::exception&) {
-                throw std::invalid_argument("--cooldown-seconds requiere un entero entre 0 y 300");
-            }
-            if (parsed != value.size() || number > 300) {
-                throw std::invalid_argument("--cooldown-seconds requiere un entero entre 0 y 300");
-            }
-            arguments.cooldown = std::chrono::seconds(number);
-            arguments.cooldown_set = true;
-        } else {
-            throw std::invalid_argument("Opción desconocida: " + option);
+std::map<std::string, std::string> LoadEnvironment() {
+    std::map<std::string, std::string> environment;
+    for (const char* name : {"LOADTEST_USERNAME", "LOADTEST_PASSWORD",
+                             "LOADTEST_VIDEO_ID", "LOADTEST_ALLOWED_HOSTS"}) {
+        if (const char* value = std::getenv(name)) {
+            environment.emplace(name, value);
         }
     }
-
-    if (arguments.single_users_url.empty() || arguments.dual_users_url.empty() ||
-        arguments.output_parent.empty()) {
-        throw std::invalid_argument(
-            "Se requieren --single-users-url, --dual-users-url y --output");
-    }
-    if (!arguments.stage_duration_set &&
-        arguments.profile == Profile::capacity) {
-        arguments.stage_duration = std::chrono::seconds(30);
-    }
-    if (arguments.scenario == Scenario::login &&
-        !arguments.max_virtual_users_set) {
-        arguments.max_virtual_users = 10;
-    }
-    if (arguments.profile == Profile::capacity && !arguments.cooldown_set) {
-        arguments.cooldown = std::chrono::seconds(15);
-    }
-    const bool any_metadata =
-        !arguments.single_metadata_url.empty() ||
-        !arguments.dual_metadata_url.empty();
-    const bool any_streaming =
-        !arguments.single_streaming_url.empty() ||
-        !arguments.dual_streaming_url.empty();
-    if (arguments.scenario == Scenario::read_only_journey &&
-        (!any_metadata || arguments.single_metadata_url.empty() ||
-         arguments.dual_metadata_url.empty() ||
-         arguments.single_streaming_url.empty() ||
-         arguments.dual_streaming_url.empty())) {
-        throw std::invalid_argument(
-            "read-only requiere URLs single y dual para metadata y streaming");
-    }
-    if (arguments.scenario == Scenario::login && (any_metadata || any_streaming)) {
-        throw std::invalid_argument(
-            "login solo acepta URLs del servicio de usuarios");
-    }
-    return arguments;
+    return environment;
 }
 
 std::string UtcTimestamp() {
@@ -239,20 +70,18 @@ std::filesystem::path CreateRunDirectory(const std::filesystem::path& parent) {
 WorkloadConfig MakeWorkload(const Target& users,
                             const std::string& metadata_url,
                             const std::string& streaming_url,
-                            Scenario scenario,
+                            const CommandLineArguments& arguments,
                             const std::vector<std::string>& allowed_hosts,
-                            const std::string& username,
-                            const std::string& password,
-                            const std::string& video_id) {
+                            Scenario scenario) {
     WorkloadConfig config;
     config.users = users;
     if (scenario == Scenario::read_only_journey) {
         config.metadata = ParseTarget(metadata_url, allowed_hosts);
         config.streaming = ParseTarget(streaming_url, allowed_hosts);
-        config.video_id = video_id;
+        config.video_id = arguments.video_id;
     }
-    config.username = username;
-    config.password = password;
+    config.username = arguments.username;
+    config.password = arguments.password;
     config.scenario = scenario;
     return config;
 }
@@ -279,23 +108,26 @@ void PrintResults(const std::vector<PairedStageResult>& results,
 
 int main(int argc, char** argv) {
     try {
-        const auto arguments = ParseArguments(argc, argv);
-        const auto allowed_hosts = AllowedHostsFromEnvironment();
-        const auto username = RequiredEnvironment("LOADTEST_USERNAME");
-        const auto password = RequiredEnvironment("LOADTEST_PASSWORD");
-        const auto video_id = arguments.scenario == Scenario::read_only_journey
-                                  ? RequiredEnvironment("LOADTEST_VIDEO_ID")
-                                  : std::string{};
+        std::vector<std::string> command_line;
+        command_line.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0);
+        for (int index = 1; index < argc; ++index) {
+            command_line.emplace_back(argv[index]);
+        }
+        const auto arguments = ParseCommandLine(command_line, LoadEnvironment());
+        if (arguments.show_help) {
+            std::cout << CommandLineUsage();
+            return 0;
+        }
 
         ComparisonConfig comparison;
         comparison.single = MakeWorkload(
-            ParseTarget(arguments.single_users_url, allowed_hosts),
+            ParseTarget(arguments.single_users_url, arguments.allowed_hosts),
             arguments.single_metadata_url, arguments.single_streaming_url,
-            arguments.scenario, allowed_hosts, username, password, video_id);
+            arguments, arguments.allowed_hosts, arguments.scenario);
         comparison.dual = MakeWorkload(
-            ParseTarget(arguments.dual_users_url, allowed_hosts),
+            ParseTarget(arguments.dual_users_url, arguments.allowed_hosts),
             arguments.dual_metadata_url, arguments.dual_streaming_url,
-            arguments.scenario, allowed_hosts, username, password, video_id);
+            arguments, arguments.allowed_hosts, arguments.scenario);
         comparison.cooldown = arguments.cooldown;
         comparison.stop_after_first_failure =
             arguments.profile == Profile::capacity;
@@ -315,7 +147,7 @@ int main(int argc, char** argv) {
         PrintResults(results, output_directory);
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << "\n\n" << kUsage;
+        std::cerr << "Error: " << error.what() << "\n\n" << CommandLineUsage();
         return 2;
     }
 }

@@ -17,6 +17,7 @@ if(NOT TARGET httplib::httplib)
 endif()
 
 add_library(tecflix-loadtest-core
+    src/cli.cpp
     src/config.cpp
     src/metrics.cpp
     src/runner.cpp
@@ -66,4 +67,8 @@ if(BUILD_TESTING)
     add_executable(tecflix-loadtest-report-tests tests/report_test.cpp)
     target_link_libraries(tecflix-loadtest-report-tests PRIVATE tecflix-loadtest-core)
     add_test(NAME TecflixLoadtestReport COMMAND tecflix-loadtest-report-tests)
+
+    add_executable(tecflix-loadtest-cli-tests tests/cli_test.cpp)
+    target_link_libraries(tecflix-loadtest-cli-tests PRIVATE tecflix-loadtest-core)
+    add_test(NAME TecflixLoadtestCli COMMAND tecflix-loadtest-cli-tests)
 endif()
