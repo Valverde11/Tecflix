@@ -11,6 +11,7 @@ namespace tecflix::loadtest {
 class LatencyHistogram {
 public:
     void Observe(std::uint64_t microseconds) noexcept;
+    void Merge(const LatencyHistogram& other) noexcept;
     std::uint64_t Count() const noexcept;
     double PercentileMilliseconds(double percentile) const;
 
@@ -27,12 +28,14 @@ struct RouteMetrics {
 
     void Record(std::uint64_t microseconds, int status_code,
                 bool response_valid = true);
+    void Merge(const RouteMetrics& other);
 };
 
 class MetricsCollector {
 public:
     void Record(const std::string& route, std::uint64_t microseconds,
                 int status_code, bool response_valid = true);
+    void Merge(const std::map<std::string, RouteMetrics>& routes);
     std::map<std::string, RouteMetrics> Snapshot() const;
 
 private:

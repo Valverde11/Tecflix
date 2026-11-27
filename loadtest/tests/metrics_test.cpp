@@ -55,11 +55,27 @@ void TestRouteMetricsCountHttpAndValidationFailures() {
     Check(metrics.latency.Count() == 3, "mide latencia de cada solicitud");
 }
 
+void TestCollectorMergeCombinesWorkerShards() {
+    tecflix::loadtest::MetricsCollector first;
+    tecflix::loadtest::MetricsCollector second;
+    first.Record("GET /health", 1000, 200);
+    second.Record("GET /health", 4000, 503);
+
+    tecflix::loadtest::MetricsCollector combined;
+    combined.Merge(first.Snapshot());
+    combined.Merge(second.Snapshot());
+    const auto route = combined.Snapshot().at("GET /health");
+    Check(route.requests == 2, "fusiona solicitudes de shards separados");
+    Check(route.failures == 1, "fusiona fallas de shards separados");
+    Check(route.latency.Count() == 2, "fusiona histogramas sin guardar muestras");
+}
+
 }  // namespace
 
 int main() {
     TestHistogramQuantilesAndEmptySamples();
     TestRouteMetricsCountHttpAndValidationFailures();
+    TestCollectorMergeCombinesWorkerShards();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

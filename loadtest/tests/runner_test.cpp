@@ -1,4 +1,4 @@
-#include "tecflix/loadtest/runner.hpp"
+#include "tecflix/loadtest/comparison.hpp"
 
 #include <httplib.h>
 #include <nlohmann/json.hpp>
@@ -204,12 +204,33 @@ void TestJourneyRejectsInvalidVideoIdBeforeNetworkCalls() {
           "no contacta servicios con configuración inválida");
 }
 
+void TestComparisonRunnerPairsEquivalentStages() {
+    FakeTecflix services;
+    auto config = services.ReadOnlyConfig();
+    config.scenario = tecflix::loadtest::Scenario::login;
+
+    tecflix::loadtest::ComparisonConfig comparison;
+    comparison.single = config;
+    comparison.dual = config;
+    comparison.stages = {{1, std::chrono::seconds(1)}};
+
+    const auto results = tecflix::loadtest::ComparisonRunner().Run(comparison);
+    Check(results.size() == 1, "produce un par de resultados por etapa");
+    Check(results.front().virtual_users == 1,
+          "conserva el mismo nivel de concurrencia del par");
+    Check(results.front().single.routes.count("POST /api/auth/login") == 1,
+          "ejecuta la topología single");
+    Check(results.front().dual.routes.count("POST /api/auth/login") == 1,
+          "ejecuta la topología dual");
+}
+
 }  // namespace
 
 int main() {
     TestReadOnlyJourneyExercisesFunctionalRoutes();
     TestLoginScenarioMeasuresAuthenticationRequests();
     TestJourneyRejectsInvalidVideoIdBeforeNetworkCalls();
+    TestComparisonRunnerPairsEquivalentStages();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

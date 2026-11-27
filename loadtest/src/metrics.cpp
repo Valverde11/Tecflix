@@ -18,6 +18,13 @@ void LatencyHistogram::Observe(std::uint64_t microseconds) noexcept {
     ++count_;
 }
 
+void LatencyHistogram::Merge(const LatencyHistogram& other) noexcept {
+    for (std::size_t index = 0; index < buckets_.size(); ++index) {
+        buckets_[index] += other.buckets_[index];
+    }
+    count_ += other.count_;
+}
+
 std::uint64_t LatencyHistogram::Count() const noexcept {
     return count_;
 }
@@ -52,11 +59,25 @@ void RouteMetrics::Record(std::uint64_t microseconds, int status_code,
     }
 }
 
+void RouteMetrics::Merge(const RouteMetrics& other) {
+    requests += other.requests;
+    failures += other.failures;
+    for (const auto& status : other.status_codes) {
+        status_codes[status.first] += status.second;
+    }
+    latency.Merge(other.latency);
+}
+
 void MetricsCollector::Record(const std::string& route,
                               std::uint64_t microseconds, int status_code,
                               bool response_valid) {
     std::lock_guard<std::mutex> lock(mutex_);
     routes_[route].Record(microseconds, status_code, response_valid);
+}
+
+void MetricsCollector::Merge(const std::map<std::string, RouteMetrics>& routes) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& route : routes) routes_[route.first].Merge(route.second);
 }
 
 std::map<std::string, RouteMetrics> MetricsCollector::Snapshot() const {

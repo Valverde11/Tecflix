@@ -95,7 +95,8 @@ public:
     Outcome Get(httplib::Client& client, const std::string& path,
                 const std::string& metric_name,
                 const httplib::Headers& headers,
-                const std::function<bool(const httplib::Response&)>& validate = {}) {
+                const std::function<bool(const httplib::Response&)>& validate = {},
+                bool capture_body = false) {
         const auto started = Clock::now();
         const auto response = client.Get(path, headers);
         const auto elapsed =
@@ -109,7 +110,7 @@ public:
                         elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0,
                         status_code, valid);
         return {static_cast<bool>(response), status_code,
-                response ? response->body : std::string{}};
+                response && capture_body ? response->body : std::string{}};
     }
 
     Outcome Post(httplib::Client& client, const std::string& path,
@@ -130,7 +131,7 @@ public:
                         elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0,
                         status_code, valid);
         return {static_cast<bool>(response), status_code,
-                response ? response->body : std::string{}};
+                {}};
     }
 
 private:
@@ -170,16 +171,22 @@ std::string FindSegment(const std::string& playlist) {
 void RunReadOnlyJourney(const WorkloadConfig& config, const std::string& token,
                        const std::string& user_id, httplib::Client& users,
                        httplib::Client& metadata, httplib::Client& streaming,
-                       RequestRecorder& requests) {
+                       RequestRecorder& requests,
+                       const std::function<bool()>& keep_running) {
     const auto headers = AuthHeaders(token);
+    if (!keep_running()) return;
     requests.Get(users, "/api/users/me", "GET /api/users/me", headers);
+    if (!keep_running()) return;
     requests.Get(users, "/api/users/" + user_id + "/quota",
                   "GET /api/users/:id/quota", headers);
+    if (!keep_running()) return;
     requests.Get(metadata,
                  "/api/metadata/videos?page=1&page_size=20&mine=true",
                  "GET /api/metadata/videos", headers);
+    if (!keep_running()) return;
     requests.Get(metadata, "/api/metadata/videos/" + config.video_id,
                  "GET /api/metadata/videos/:id", headers);
+    if (!keep_running()) return;
     requests.Get(streaming, "/api/videos/" + config.video_id,
                  "GET /api/videos/:id", headers,
                  [](const httplib::Response& response) {
@@ -191,17 +198,18 @@ void RunReadOnlyJourney(const WorkloadConfig& config, const std::string& token,
                      }
                  });
 
+    if (!keep_running()) return;
     const auto manifest_path =
         "/api/videos/" + config.video_id + "/index.m3u8";
     const auto manifest = requests.Get(
         streaming, manifest_path, "GET /api/videos/:id/index.m3u8", headers,
         [](const httplib::Response& response) {
             return response.status == 200 && !FindSegment(response.body).empty();
-        });
+        }, true);
     if (!manifest.received || manifest.status_code != 200) return;
 
     const auto segment = FindSegment(manifest.body);
-    if (segment.empty()) return;
+    if (segment.empty() || !keep_running()) return;
     requests.Get(streaming,
                  "/api/videos/" + config.video_id + "/segments/" + segment,
                  "GET /api/videos/:id/segments/:segment", headers);
@@ -231,8 +239,6 @@ StageResult WorkloadRunner::Run(const WorkloadConfig& config,
         user_id = std::move(identity.second);
     }
 
-    MetricsCollector metrics;
-    RequestRecorder requests(metrics);
     std::atomic<std::uint64_t> completed_iterations{0};
     std::atomic<bool> release_workers{false};
     std::atomic<bool> stop_workers{false};
@@ -241,11 +247,17 @@ StageResult WorkloadRunner::Run(const WorkloadConfig& config,
     std::mutex error_mutex;
     std::string worker_error;
     std::vector<std::thread> workers;
+    std::vector<std::unique_ptr<MetricsCollector>> worker_metrics;
     workers.reserve(stage.virtual_users);
+    worker_metrics.reserve(stage.virtual_users);
+    for (std::uint32_t index = 0; index < stage.virtual_users; ++index) {
+        worker_metrics.push_back(std::make_unique<MetricsCollector>());
+    }
     Clock::time_point deadline;
 
-    const auto worker = [&](std::uint32_t) {
+    const auto worker = [&](std::uint32_t worker_index) {
         auto users = MakeClient(config.users);
+        RequestRecorder requests(*worker_metrics[worker_index]);
         std::unique_ptr<httplib::Client> metadata;
         std::unique_ptr<httplib::Client> streaming;
         if (config.scenario == Scenario::read_only_journey) {
@@ -267,7 +279,11 @@ StageResult WorkloadRunner::Run(const WorkloadConfig& config,
                               "POST /api/auth/login", config);
             } else {
                 RunReadOnlyJourney(config, token, user_id, *users, *metadata,
-                                   *streaming, requests);
+                                   *streaming, requests, [&] {
+                                       return !stop_workers.load(
+                                                  std::memory_order_relaxed) &&
+                                              Clock::now() < deadline;
+                                   });
             }
             ++completed_iterations;
         }
@@ -284,6 +300,7 @@ StageResult WorkloadRunner::Run(const WorkloadConfig& config,
                         if (worker_error.empty()) worker_error = error.what();
                     }
                     stop_workers.store(true, std::memory_order_relaxed);
+                    release_workers.store(true, std::memory_order_release);
                     start_condition.notify_all();
                 }
             });
@@ -317,7 +334,11 @@ StageResult WorkloadRunner::Run(const WorkloadConfig& config,
     result.elapsed_seconds =
         std::chrono::duration<double>(finished - started).count();
     result.completed_iterations = completed_iterations.load();
-    result.routes = metrics.Snapshot();
+    MetricsCollector combined_metrics;
+    for (const auto& worker : worker_metrics) {
+        combined_metrics.Merge(worker->Snapshot());
+    }
+    result.routes = combined_metrics.Snapshot();
     return result;
 }
 

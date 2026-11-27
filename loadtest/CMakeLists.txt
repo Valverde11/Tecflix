@@ -51,4 +51,5 @@ if(BUILD_TESTING)
         PRIVATE tecflix-loadtest-core httplib::httplib
     )
     add_test(NAME TecflixLoadtestRunner COMMAND tecflix-loadtest-runner-tests)
+
 endif()

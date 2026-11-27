@@ -63,6 +63,8 @@ void TestRejectsUnsafeOrMalformedUrls() {
                 "rechaza puertos fuera de rango");
     CheckThrows([] { ParseTarget("http://::1:8081"); },
                 "rechaza IPv6 sin corchetes");
+    CheckThrows([] { ParseTarget("http://fdomain.example"); },
+                "no interpreta prefijo de hostname como IPv6 privado");
 }
 
 void TestProfilesAndBoundaries() {
