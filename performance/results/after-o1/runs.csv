@@ -1,0 +1,10 @@
+run,scenario,vus,think,start_epoch,end_epoch
+journey_think1_v1,journey,1,1,1795749072,1795749136
+journey_think1_v8,journey,8,1,1795749146,1795749201
+journey_think1_v32,journey,32,1,1795749219,1795749279
+journey_think1_v64,journey,64,1,1795749297,1795749367
+journey_think0_v8,journey,8,0,1795749377,1795749432
+journey_think0_v32,journey,32,0,1795749451,1795749510
+journey_think0_v64,journey,64,0,1795749528,1795749592
+catalog_v8,catalog,8,0,1795749611,1795749666
+catalog_v32,catalog,32,0,1795749684,1795749740

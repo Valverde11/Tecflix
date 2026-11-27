@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 513     8.088588/s
+    checks_succeeded...: 100.00% 513 out of 513
+    checks_failed......: 0.00%   0 out of 513
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=48.542541 min=44.156124 med=46.687619 max=83.967942 p(90)=53.611414 p(95)=55.38157 p(99)=72.913003
+    load_metadata_video_duration_ms.......: avg=0.716189  min=0.585575  med=0.684352  max=1.226934  p(90)=0.847036  p(95)=0.910144 p(99)=1.108086 
+    load_streaming_manifest_duration_ms...: avg=0.929595  min=0.779955  med=0.898685  max=1.454969  p(90)=1.081405  p(95)=1.101791 p(99)=1.333068 
+    load_streaming_segment_duration_ms....: avg=4.837116  min=1.990341  med=3.882896  max=45.849885 p(90)=6.533048  p(95)=7.440631 p(99)=25.229076
+    load_streaming_status_duration_ms.....: avg=1.035274  min=0.076531  med=1.002157  max=1.619046  p(90)=1.213421  p(95)=1.422516 p(99)=1.581726 
+    load_users_profile_duration_ms........: avg=0.544567  min=0.272713  med=0.543562  max=0.816622  p(90)=0.687355  p(95)=0.740322 p(99)=0.791012 
+    load_users_quota_duration_ms..........: avg=0.289475  min=0.162352  med=0.275771  max=0.505391  p(90)=0.380754  p(95)=0.417172 p(99)=0.471051 
+
+    HTTP
+    http_req_duration.....................: avg=8.06ms    min=76.53µs   med=896.16µs  max=83.96ms   p(90)=45.71ms   p(95)=47.65ms  p(99)=54.14ms  
+    http_req_failed.......................: 0.00%  0 out of 402
+    http_reqs.............................: 402    6.338425/s
+
+    EXECUTION
+    iteration_duration....................: avg=1.05s     min=1.05s     med=1.05s     max=1.09s     p(90)=1.06s     p(95)=1.06s    p(99)=1.09s    
+    iterations............................: 57     0.898732/s
+    vus...................................: 1      min=1        max=1
+    vus_max...............................: 1      min=1        max=1
+
+    NETWORK
+    data_received.........................: 146 MB 2.3 MB/s
+    data_sent.............................: 117 kB 1.8 kB/s
+
+
+

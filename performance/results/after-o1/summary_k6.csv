@@ -1,0 +1,10 @@
+run,scenario,vus,think,requests,req_per_s,p50_ms,p95_ms,p99_ms,max_ms,failed_pct
+journey_think1_v1,journey,1,1,402,6.3,0.9,47.66,54.15,83.97,0
+journey_think1_v8,journey,8,1,3062,55.9,0.91,85.71,121.94,7447.1,0
+journey_think1_v32,journey,32,1,3771,63.3,0.96,744.63,9004.94,16543.61,3.606
+journey_think1_v64,journey,64,1,3893,56.5,1.39,8997.32,10566.03,16545.71,8.4
+journey_think0_v8,journey,8,0,12127,221.4,1.76,265.27,327.44,7804.87,0
+journey_think0_v32,journey,32,0,11313,191.3,1.81,307.34,8364.58,16549.91,0.981
+journey_think0_v64,journey,64,0,8430,132.5,2.2,1896.93,9293.64,16551.39,3.76
+catalog_v8,catalog,8,0,1608,29.3,273.85,493.91,7320.15,7911.66,0
+catalog_v32,catalog,32,0,1493,27.1,1088.91,2827.41,8466.75,10620.56,0

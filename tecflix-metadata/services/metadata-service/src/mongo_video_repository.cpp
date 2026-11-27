@@ -4,6 +4,7 @@
 #include <mongocxx/client.hpp>
 #include <mongocxx/collection.hpp>
 #include <mongocxx/exception/exception.hpp>
+#include <mongocxx/exception/operation_exception.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/options/find.hpp>
 #include <mongocxx/options/index.hpp>
@@ -147,19 +148,46 @@ struct MongoVideoRepository::Impl {
     return (*client)[database][kCollectionName];
   }
 
-  // Índices que respaldan las consultas del catálogo (ver SPEC_METADATA.md). Crear un
-  // índice que ya existe con la misma definición no hace nada.
+  // Índices que respaldan las consultas del catálogo. Crear un índice que ya existe con
+  // la misma definición no hace nada.
+  //
+  // El catálogo filtra con $or [{visibility: "public"}, {owner_id: viewer}] y ordena por
+  // {campo, _id}. Para no ordenar en memoria, cada rama del $or necesita su propio índice
+  // "igualdad + orden": {visibility, campo, _id} y {owner_id, campo, _id}. MongoDB recorre
+  // ambos ya ordenados y los mezcla (SORT_MERGE), leyendo solo skip + limit entradas.
+  // Un índice ascendente sirve también para el orden descendente (se recorre al revés).
+  // Título y autor llevan la misma collation que la consulta; si no, no se pueden usar.
   void EnsureIndexes() const {
     const auto client = pool.acquire();
     auto videos = Collection(client);
-    videos.create_index(ToBsonText(R"({"owner_id":1,"uploaded_at":-1})").view());
-    videos.create_index(ToBsonText(R"({"visibility":1,"uploaded_at":-1})").view());
+    videos.create_index(ToBsonText(R"({"visibility":1,"uploaded_at":1,"_id":1})").view());
+    videos.create_index(ToBsonText(R"({"owner_id":1,"uploaded_at":1,"_id":1})").view());
     videos.create_index(ToBsonText(R"({"tags":1})").view());
     mongocxx::options::index collated;
     const auto collation = ToBsonText(kSpanishCollation);
     collated.collation(collation.view());
-    videos.create_index(ToBsonText(R"({"title":1})").view(), collated);
-    videos.create_index(ToBsonText(R"({"owner_name":1})").view(), collated);
+    for (const char* field : {"title", "owner_name"}) {
+      for (const char* branch : {"visibility", "owner_id"}) {
+        const std::string keys = std::string("{\"") + branch + "\":1,\"" + field +
+                                 "\":1,\"_id\":1}";
+        videos.create_index(ToBsonText(keys).view(), collated);
+      }
+    }
+    DropLegacyIndexes(videos);
+  }
+
+  // Índices de la V1 que los anteriores reemplazan (son prefijos suyos o no sirven para
+  // el orden con desempate). Se eliminan para no pagar su mantenimiento en cada escritura.
+  static void DropLegacyIndexes(mongocxx::collection& videos) {
+    constexpr int kIndexNotFound = 27;
+    for (const char* name : {"owner_id_1_uploaded_at_-1", "visibility_1_uploaded_at_-1",
+                             "title_1", "owner_name_1"}) {
+      try {
+        videos.indexes().drop_one(name);
+      } catch (const mongocxx::operation_exception& error) {
+        if (error.code().value() != kIndexNotFound) throw;
+      }
+    }
   }
 
   mutable mongocxx::pool pool;
