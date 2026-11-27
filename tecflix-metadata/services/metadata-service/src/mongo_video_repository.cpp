@@ -103,14 +103,28 @@ json VisibilityFilter(const VideoQuery& query) {
   return {{"visibility", "public"}};
 }
 
-json BuildFilter(const VideoQuery& query) {
-  json clauses = json::array({VisibilityFilter(query)});
+// Une las condiciones de visibilidad con los filtros opcionales (etiqueta y texto).
+json WithOptionalFilters(json clauses, const VideoQuery& query) {
   if (query.tag) clauses.push_back({{"tags", *query.tag}});
   if (query.text) {
     clauses.push_back(
         {{"title", {{"$regex", EscapeRegex(*query.text)}, {"$options", "i"}}}});
   }
   return {{"$and", clauses}};
+}
+
+json BuildFilter(const VideoQuery& query) {
+  return WithOptionalFilters(json::array({VisibilityFilter(query)}), query);
+}
+
+// Filtros para contar el catálogo de un usuario sin el $or (ver CountMatching).
+json PublicFilter(const VideoQuery& query) {
+  return WithOptionalFilters(json::array({json{{"visibility", "public"}}}), query);
+}
+
+json OwnPrivateFilter(const VideoQuery& query, const std::string& viewer_id) {
+  return WithOptionalFilters(
+      json::array({json{{"owner_id", viewer_id}}, json{{"visibility", "private"}}}), query);
 }
 
 const char* SortFieldName(SortField field) {
@@ -137,6 +151,20 @@ std::string BuildSort(const VideoQuery& query) {
 bool NeedsCollation(SortField field) { return field != SortField::kUploadedAt; }
 
 const char kSpanishCollation[] = R"({"locale":"es","strength":2})";
+
+// Total de videos que cumplen la consulta (para la paginación).
+// Con un $or, MongoDB no puede contar solo con el índice: recorre las dos ramas y
+// elimina duplicados (~47 ms con 100 000 videos, casi todo el costo del catálogo).
+// Las ramas "públicos" y "privados del usuario" son disjuntas, así que la suma de dos
+// conteos de una sola condición da el mismo total exacto. El de públicos se resuelve
+// con COUNT_SCAN sobre {visibility, uploaded_at, _id}, sin leer documentos.
+std::int64_t CountMatching(mongocxx::collection& videos, const VideoQuery& query) {
+  if (query.only_mine || !query.viewer_id) {
+    return videos.count_documents(ToBson(BuildFilter(query)).view());
+  }
+  return videos.count_documents(ToBson(PublicFilter(query)).view()) +
+         videos.count_documents(ToBson(OwnPrivateFilter(query, *query.viewer_id)).view());
+}
 
 }  // namespace
 
@@ -252,7 +280,7 @@ VideoPage MongoVideoRepository::List(const VideoQuery& query) const {
   if (NeedsCollation(query.sort)) options.collation(collation.view());
 
   VideoPage page;
-  page.total = videos.count_documents(filter.view());
+  page.total = CountMatching(videos, query);
   for (const auto& document : videos.find(filter.view(), options)) {
     page.items.push_back(FromDocument(FromBson(document)));
   }

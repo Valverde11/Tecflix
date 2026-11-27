@@ -1,0 +1,69 @@
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:14-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:14-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:15-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:15-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:15-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:15-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:15-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:15-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/index.m3u8\": request timeout"
+time="2026-11-26T21:42:16-06:00" level=error msg="TypeError: Cannot read property 'includes' of undefined or null\n\tat HLS manifest contains #EXTM3U (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:194:16(3))\n\tat go.k6.io/k6/internal/js/modules/k6.(*K6).Check-fm (native)\n\tat runUserJourney (file:///home/ale23/tecflix-loadtests/load-tests/lib/tecflix.js:192:8(123))\n\tat default (file:///home/ale23/tecflix-loadtests/load-tests/scenarios/load.js:26:17(3))\n" executor=constant-vus scenario=default source=stacktrace
+time="2026-11-26T21:42:16-06:00" level=warning msg="Request Failed" error="Get \"http://127.0.0.1:8083/api/videos/bb4bf5e61422499aa0ec3962cfe07b40/segments/segment_00001.ts\": request timeout"
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 96204  1723.879535/s
+    checks_succeeded...: 99.96% 96173 out of 96204
+    checks_failed......: 0.03%  31 out of 96204
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=64.819165 min=-7560.166971  med=30.338328 max=7496.879461  p(90)=37.434106 p(95)=39.625406 p(99)=49.566335  
+    load_metadata_video_duration_ms.......: avg=3.257961  min=0.114135      med=0.99522   max=7459.046087  p(90)=1.57092   p(95)=2.201853  p(99)=3.870593   
+    load_streaming_manifest_duration_ms...: avg=58.744372 min=0.08775       med=1.469001  max=11516.513976 p(90)=2.238492  p(95)=3.074009  p(99)=3894.145635
+    load_streaming_manifest_unexpected....: 15    0.268785/s
+    load_streaming_segment_duration_ms....: avg=42.433482 min=-7588.752528  med=4.567216  max=11638.488735 p(90)=12.232056 p(95)=17.433529 p(99)=53.387858  
+    load_streaming_segment_unexpected.....: 1     0.017919/s
+    load_streaming_status_duration_ms.....: avg=49.293314 min=0.042982      med=1.482178  max=11546.092621 p(90)=2.187662  p(95)=3.040335  p(99)=3608.301338
+    load_unexpected_responses.............: 16    0.286704/s
+    load_users_profile_duration_ms........: avg=2.599875  min=0.08527       med=0.461454  max=7093.28062   p(90)=0.812875  p(95)=1.673586  p(99)=3.184048   
+    load_users_quota_duration_ms..........: avg=0.396268  min=0.161688      med=0.334084  max=6.641839     p(90)=0.478747  p(95)=0.627541  p(99)=2.150605   
+
+    HTTP
+    http_req_duration.....................: avg=31.64ms   min=-7588752528ns med=1.39ms    max=11.63s       p(90)=28.4ms    p(95)=33.71ms   p(99)=46.55ms    
+    http_req_failed.......................: 0.02% 16 out of 74825
+    http_reqs.............................: 74825 1340.789221/s
+
+    EXECUTION
+    iteration_duration....................: avg=196.42ms  min=28.03ms       med=43.21ms   max=10.04s       p(90)=56.96ms   p(95)=84.72ms   p(99)=4.56s      
+    iterations............................: 10691 191.572036/s
+    vus...................................: 8     min=8           max=32
+    vus_max...............................: 32    min=32          max=32
+
+    NETWORK
+    data_received.........................: 27 GB 490 MB/s
+    data_sent.............................: 22 MB 393 kB/s
+
+
+
