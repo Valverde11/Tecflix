@@ -62,4 +62,8 @@ if(BUILD_TESTING)
         PRIVATE tecflix-loadtest-core
     )
     add_test(NAME TecflixLoadtestComparison COMMAND tecflix-loadtest-comparison-tests)
+
+    add_executable(tecflix-loadtest-report-tests tests/report_test.cpp)
+    target_link_libraries(tecflix-loadtest-report-tests PRIVATE tecflix-loadtest-core)
+    add_test(NAME TecflixLoadtestReport COMMAND tecflix-loadtest-report-tests)
 endif()

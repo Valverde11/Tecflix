@@ -110,3 +110,4 @@ Las mediciones del harness no sustituyen una campaña real sobre ambas topologí
 - Decisión 7: se acordó compilar y probar en CI con cobertura, sin generar carga real en CI. **Estado:** job pendiente.
 - Decisión 8: smoke se restringe a destinos locales/privados para impedir tráfico remoto involuntario. **Estado:** falta hacer que el parser aplique esta regla; hoy acepta hosts externos autorizados en cualquier perfil.
 - C++17, rutas, perfiles actuales, formatos de reporte y sus diferencias con las decisiones aprobadas se detallan en las secciones 3 y 5. Todavía no hay resultados reales de campañas V2 ni métricas de cobertura que declarar.
+- Fase 2: probar reportes, degradación de comparación y validación del CLI mediante casos aislados; extraer el parser con el cambio mínimo para inyectar argumentos/entorno y no depender de secretos ni servicios externos. **Estado:** plan de tests, pendiente de implementar y medir cobertura.
