@@ -2,8 +2,8 @@
 
 Este documento define el alcance y las decisiones para las pruebas de carga de Tecflix. Complementa `SPEC.md` y `SPEC_DASHBOARD.md`; si hay una contradicción, prevalece `SPEC.md`. Es la fuente de verdad para cualquier implementación de load testing que se agregue en prompts posteriores.
 
-**Estado:** especificación inicial; todavía no hay scripts ni configuración de load testing en el repositorio.  
-**Alcance:** carga y estrés de las APIs de Tecflix y comparación de topologías. No define cambios a la lógica de negocio.
+**Estado:** implementación C++ disponible en `loadtest/`; permite ejecutar escenarios y comparar resultados, pero aún no documenta mediciones reales de un despliegue V2.
+**Alcance:** carga y estrés concurrente de APIs Tecflix y comparación de topologías de una instancia y dos instancias. No cambia la lógica de negocio.
 
 ## 1. Objetivo
 
@@ -11,18 +11,18 @@ Medir el comportamiento de Tecflix bajo usuarios concurrentes y obtener evidenci
 
 1. Identificar capacidad, latencia, tasa de errores y posibles cuellos de botella.
 2. Comparar un despliegue de una instancia con otro de dos instancias detrás de un balanceador.
-3. Relacionar resultados con las métricas de `observability/` y las optimizaciones que se implementen.
+3. Facilitar la correlación manual de resultados con el dashboard de `observability/` y las optimizaciones que se implementen. El ejecutable no consulta Prometheus ni recoge métricas de CPU/RAM.
 
-La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancias. `SPEC_DASHBOARD.md` propone k6 para producir tráfico y observar el dashboard; la herramienta final queda pendiente de confirmación mediante una decisión registrada abajo.
+La sección 4.3 de `SPEC.md` y el requisito V2 del PDF del proyecto requieren determinar los límites con usuarios concurrentes y comparar uno y dos servidores. Se implementa un ejecutable nativo C++17, integrado con CMake, en lugar de depender de k6, Python, JavaScript o scripts auxiliares.
 
 ## 2. Alcance y límites
 
 ### Incluido
 
-- Escenarios de carga para rutas funcionales de las APIs de Usuarios, Metadata y Streaming, según los contratos disponibles.
-- Ejecución repetible y parámetros explícitos para duración, concurrencia, destino y topología.
-- Medición de latencia, throughput y errores de las solicitudes; correlación con métricas de Prometheus/Grafana cuando el stack esté disponible.
-- Comparación equivalente de una instancia frente a dos instancias con balanceador.
+- Escenarios concurrentes `read-only` y `login`, con perfiles `smoke`, `fixed` y `capacity`.
+- Comparación pareada de dos configuraciones de servicios, denominadas `single` y `dual`, usando la misma concurrencia y duración por etapa.
+- Métricas por ruta de cantidad de solicitudes, códigos HTTP, fallos y percentiles de latencia, además de resumen de throughput, p50, p95 y respuestas 429/503.
+- Reportes de comparación en JSON y CSV, incluyendo configuración de destinos y primer nivel con fallos observados.
 - Documentación de condiciones, resultados y limitaciones para que las comparaciones sean interpretables.
 
 ### Fuera de alcance inicial
@@ -34,33 +34,38 @@ La sección 4.3 de `SPEC.md` establece la comparación entre una y dos instancia
 
 ## 3. Requisitos
 
-1. El tráfico debe apuntar únicamente a un entorno local o de pruebas autorizado y claramente identificado.
-2. Cada escenario debe declarar las rutas que ejercita, los datos requeridos, la duración y la carga aplicada.
-3. Los escenarios deben ser seguros de repetir: usar datos de prueba aislados y no depender de registros compartidos o irreversibles.
-4. No usar únicamente `/health` como sustituto de carga funcional. El README advierte que las pruebas de desempeño deben ejercitar rutas reales.
-5. Comparar topologías bajo condiciones equivalentes: mismo escenario, perfil de carga, datos y configuración relevante.
-6. Reportar errores y fallos de configuración explícitamente; una prueba incompleta no debe presentarse como exitosa.
-7. No asumir objetivos de rendimiento ni criterios pass/fail hasta que el equipo los acuerde.
-8. Mantener fuera del control de versiones credenciales, secretos, videos, resultados voluminosos y datos sensibles.
+1. Implementar el generador y sus pruebas en C++17 bajo `loadtest/`; compilar con CMake y usar las dependencias disponibles en el proyecto (cpp-httplib vendorizado, nlohmann-json y Threads).
+2. Admitir los escenarios `read-only` (recorrido funcional de lectura por Usuarios, Metadata y Streaming) y `login` (autenticaciones repetidas contra Usuarios).
+3. Admitir `smoke` (1 usuario virtual), `fixed` (máximo configurado) y `capacity` (niveles crecientes, limitados al máximo configurado).
+4. Limitar la concurrencia a 50 usuarios virtuales para `read-only`, 10 para `login`, y la duración de cada etapa a 1–300 segundos. Estos límites protegen al generador/entorno; no son objetivos de capacidad del sistema.
+5. Admitir solo destinos HTTP sin ruta, query ni credenciales integradas. Por defecto aceptar hosts locales/privados; un destino externo requiere hostname exacto en `LOADTEST_ALLOWED_HOSTS` y autorización explícita.
+6. Leer `LOADTEST_USERNAME` y `LOADTEST_PASSWORD` del entorno; `read-only` también requiere `LOADTEST_VIDEO_ID` de un video ya listo, con ID hexadecimal minúsculo de 32 caracteres.
+7. El escenario `read-only` debe medir las rutas funcionales usadas por el recorrido y nunca modificar usuarios, metadata o videos. No usar únicamente `/health`.
+8. Comparar los mismos escenarios y niveles de carga para `single` y `dual`; alternar cuál topología se ejecuta primero entre niveles y respetar los tiempos de enfriamiento configurados.
+9. Contabilizar como fallos respuestas no 2xx, errores de red y respuestas HTTP cuyo contenido no cumpla la validación del escenario. Identificar 429 y 503 por separado como respuestas de rechazo observadas.
+10. En perfil `capacity`, terminar de ejecutar el par de topologías del primer nivel con fallos y no subir a niveles posteriores. No presentar esto como límite absoluto: es el primer fallo observado dentro del perfil aplicado.
+11. No asumir objetivos numéricos de latencia, throughput ni criterios de aprobación hasta que el equipo los acuerde. No presentar resultados de pruebas del harness como mediciones de despliegue.
+12. Mantener credenciales, secretos y resultados voluminosos fuera del control de versiones.
 
 ## 4. Criterios de aceptación
 
-- Los scripts y sus instrucciones permiten reproducir cada escenario en un entorno autorizado.
-- Se puede distinguir qué topología se probó y qué configuración se usó.
-- Los resultados incluyen al menos latencia, throughput, errores, perfil de carga y duración.
-- Se puede comparar una instancia con dos instancias detrás del balanceador sin cambiar el escenario.
+- El ejecutable C++ se compila y sus pruebas CMake/CTest cubren configuración, métricas, escenarios HTTP y comparación.
+- Se puede ejecutar cada escenario contra destinos autorizados con credenciales desde el entorno.
+- El reporte JSON y CSV distingue perfil, escenario, destinos, etapas, concurrencia, duración, latencia, throughput, fallos, respuestas 429/503 y cambios entre topologías.
+- La comparación mantiene el mismo escenario y carga para las dos configuraciones; en `capacity` completa ambas antes de detenerse al detectar fallos.
 - La documentación explica limitaciones y no atribuye causalidad a métricas que solo sean correlativas.
 - Ningún umbral de aprobación se considera acordado hasta quedar escrito en esta sección y en la memoria del agente.
 
-## 5. Decisiones pendientes
+## 5. Decisiones y límites vigentes
 
-- Herramienta de carga (k6 es la opción sugerida por `SPEC_DASHBOARD.md`; Locust y JMeter aparecen como alternativas en `SPEC.md`).
-- Rutas concretas y datos de prueba por escenario.
-- Entorno/topología automatizada para las dos configuraciones comparadas.
-- Perfil de usuarios, duración y criterios cuantitativos de aceptación.
-- Si las pruebas se ejecutan localmente, en CI o en ambos.
+- **Herramienta:** C++17; ejecutable independiente `tecflix-loadtest`. El uso de k6 que menciona `SPEC_DASHBOARD.md` no aplica a esta implementación.
+- **Rutas:** `read-only` ejecuta login de preparación, perfil, cuota, catálogo, detalle, estado de streaming, manifiesto HLS y un segmento. `login` repite `POST /api/auth/login` durante cada etapa.
+- **Topologías:** el ejecutable recibe URLs de Usuarios, Metadata y Streaming para `single` y `dual`; balanceador, réplicas, datos compartidos y storage deben estar desplegados previamente.
+- **Límites:** `smoke` usa 1 usuario; `fixed` sostiene el máximo; `capacity` recorre niveles crecientes. Máximo 50 VUs read-only, 10 login y 300 s por etapa. En `capacity`, por defecto 30 s por etapa y 15 s de cooldown.
+- **Resultados:** JSON y CSV se escriben en un subdirectorio de ejecución bajo la ruta `--output`; se recomienda `load-tests/results/`, ya ignorada por Git. Latencias p50/p95 son estimaciones de un histograma exponencial.
+- **Ejecución:** manual en ambiente local/de pruebas autorizado. No hay generación de carga en CI ni mediciones reales V1/V2 registradas todavía. Los umbrales de desempeño están pendientes.
 
-No resolver estas decisiones mediante suposiciones silenciosas. Cuando un prompt las aclare, actualizar esta especificación y registrar brevemente la decisión en la memoria.
+Las comparaciones producidas por el harness y sus servidores falsos verifican el código del generador, no sustituyen una medición de infraestructura. El primer error observado depende del entorno, datos, duración, rutas y perfil de carga; no representa un límite universal.
 
 ## Agent instructions
 
@@ -74,7 +79,10 @@ No resolver estas decisiones mediante suposiciones silenciosas. Cuando un prompt
 
 ## Agent memory
 
-- La necesidad inicial proviene de `SPEC.md` §4.3: simular usuarios concurrentes y comparar una instancia con dos detrás de un balanceador.
-- `SPEC_DASHBOARD.md` sugiere k6 y el uso de Grafana como evidencia; la herramienta todavía no está aprobada para esta implementación.
-- Al crear esta especificación no existen scripts ni configuración de load testing identificados en el repositorio; por eso esta versión documenta requisitos, no capacidades ya disponibles.
-- No se han definido rutas de carga, límites numéricos, perfiles de concurrencia ni criterios cuantitativos de éxito; no asumirlos.
+- El generador reside en `loadtest/` y todo su código de producción y pruebas es C++17; CMake lo construye aparte de las APIs.
+- Se usan escenarios read-only (una autenticación de preparación y recorrido funcional con token) y login repetido (mide autenticaciones); se evita modificar datos de usuarios y videos.
+- Los perfiles están limitados a 50 VUs para read-only y 10 para login, con etapas de 1–300 s; son límites de seguridad del harness, no objetivos de rendimiento.
+- Las dos topologías se ejecutan secuencialmente con igual concurrencia; el orden inicial alterna por nivel. `capacity` conserva el par y detiene niveles posteriores ante fallos.
+- Los destinos externos requieren aprobación del operador y un hostname exacto en `LOADTEST_ALLOWED_HOSTS`; se rechazan URLs HTTPS, rutas, queries y credenciales embebidas.
+- Se escriben `comparison.json` y `comparison.csv` con resultados observados; 429/503 se marcan como rechazos, pero todos los no-2xx, errores de red y respuestas inválidas cuentan como fallos.
+- El build y pruebas con servicios simulados validan el harness; no equivalen a una ejecución de carga contra despliegues V1/V2 reales. No se han acordado umbrales ni resultados oficiales.
