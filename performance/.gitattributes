@@ -1,0 +1,3 @@
+# Scripts run inside WSL/Linux: keep LF so bash does not choke on .
+*.sh text eol=lf
+*.py text eol=lf

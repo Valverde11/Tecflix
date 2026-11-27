@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 3060    55.216362/s
+    checks_succeeded...: 100.00% 3060 out of 3060
+    checks_failed......: 0.00%   0 out of 3060
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=561.390607 min=0.048924 med=369.261977 max=7636.064882 p(90)=609.17905 p(95)=654.032996 p(99)=7466.323726
+    load_metadata_video_duration_ms.......: avg=0.856658   min=0.585474 med=0.843147   max=1.427203    p(90)=1.008874  p(95)=1.080527   p(99)=1.320584   
+    load_streaming_manifest_duration_ms...: avg=1.033968   min=0.786933 med=0.991194   max=4.106583    p(90)=1.20181   p(95)=1.332037   p(99)=1.908188   
+    load_streaming_segment_duration_ms....: avg=25.657939  min=1.938534 med=2.941835   max=6965.660884 p(90)=7.765744  p(95)=13.826644  p(99)=48.280768  
+    load_streaming_status_duration_ms.....: avg=13.045065  min=0.843896 med=1.070155   max=4060.677636 p(90)=1.31094   p(95)=1.399686   p(99)=1.807494   
+    load_users_profile_duration_ms........: avg=0.438849   min=0.221803 med=0.418118   max=0.925027    p(90)=0.553405  p(95)=0.704361   p(99)=0.88243    
+    load_users_quota_duration_ms..........: avg=0.270938   min=0.160634 med=0.257134   max=0.588106    p(90)=0.345854  p(95)=0.374263   p(99)=0.481097   
+
+    HTTP
+    http_req_duration.....................: avg=85.99ms    min=48.92µs  med=966.87µs   max=7.63s       p(90)=298.46ms  p(95)=425.86ms   p(99)=643.29ms   
+    http_req_failed.......................: 0.00%  0 out of 2383
+    http_reqs.............................: 2383   43.000193/s
+
+    EXECUTION
+    iteration_duration....................: avg=1.41s      min=1.18s    med=1.37s      max=6s          p(90)=1.62s     p(95)=1.66s      p(99)=1.96s      
+    iterations............................: 340    6.135151/s
+    vus...................................: 8      min=8         max=8
+    vus_max...............................: 8      min=8         max=8
+
+    NETWORK
+    data_received.........................: 870 MB 16 MB/s
+    data_sent.............................: 695 kB 13 kB/s
+
+
+
