@@ -1,11 +1,14 @@
 #include "tecflix/loadtest/report.hpp"
 
+#include <httplib.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <nlohmann/json.hpp>
 
@@ -19,6 +22,37 @@ using tecflix::loadtest::ParseTarget;
 using tecflix::loadtest::WorkloadConfig;
 
 int failures = 0;
+
+class FailingLoginServer {
+public:
+    FailingLoginServer() {
+        server_.Post("/api/auth/login",
+                     [](const httplib::Request&, httplib::Response& response) {
+                         response.status = 503;
+                         response.set_content(R"({"error":"overloaded"})",
+                                              "application/json");
+                     });
+        port_ = server_.bind_to_any_port("127.0.0.1");
+        if (port_ <= 0) throw std::runtime_error("No se pudo iniciar servidor de prueba");
+        thread_ = std::thread([this] { server_.listen_after_bind(); });
+        server_.wait_until_ready();
+    }
+
+    ~FailingLoginServer() {
+        server_.stop();
+        if (thread_.joinable()) thread_.join();
+    }
+
+    FailingLoginServer(const FailingLoginServer&) = delete;
+    FailingLoginServer& operator=(const FailingLoginServer&) = delete;
+
+    int Port() const noexcept { return port_; }
+
+private:
+    httplib::Server server_;
+    std::thread thread_;
+    int port_ = 0;
+};
 
 void Check(bool condition, const char* description) {
     if (!condition) {
@@ -151,6 +185,34 @@ void TestReportsTheFirstObservedFailure() {
     std::filesystem::remove_all(report_dir, error);
 }
 
+void TestCapacityStopsAfterFirstFailedPairedStage() {
+    using namespace tecflix::loadtest;
+    FailingLoginServer server;
+    WorkloadConfig config;
+    config.users = ParseTarget("http://127.0.0.1:" +
+                               std::to_string(server.Port()));
+    config.username = "test-user";
+    config.password = "test-password";
+    config.scenario = Scenario::login;
+
+    ComparisonConfig comparison;
+    comparison.single = config;
+    comparison.dual = config;
+    comparison.stages = {
+        {1, std::chrono::seconds(1)},
+        {2, std::chrono::seconds(1)},
+    };
+    comparison.stop_after_first_failure = true;
+
+    const auto results = ComparisonRunner().Run(comparison);
+    Check(results.size() == 1,
+          "detiene capacity después del primer nivel con fallos");
+    Check(!results.empty() && Summarize(results.front().single).failures > 0,
+          "registra fallos en single");
+    Check(!results.empty() && Summarize(results.front().dual).failures > 0,
+          "completa y registra el par dual del nivel fallido");
+}
+
 }  // namespace
 
 int main() {
@@ -158,6 +220,7 @@ int main() {
     TestWritesPairedJsonAndCsvReports();
     TestRejectsEmptyComparisonReport();
     TestReportsTheFirstObservedFailure();
+    TestCapacityStopsAfterFirstFailedPairedStage();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

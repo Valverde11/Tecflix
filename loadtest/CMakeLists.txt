@@ -59,7 +59,7 @@ if(BUILD_TESTING)
 
     add_executable(tecflix-loadtest-comparison-tests tests/comparison_test.cpp)
     target_link_libraries(tecflix-loadtest-comparison-tests
-        PRIVATE tecflix-loadtest-core
+        PRIVATE tecflix-loadtest-core httplib::httplib
     )
     add_test(NAME TecflixLoadtestComparison COMMAND tecflix-loadtest-comparison-tests)
 
