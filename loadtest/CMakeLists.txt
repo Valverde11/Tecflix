@@ -20,6 +20,8 @@ add_library(tecflix-loadtest-core
     src/config.cpp
     src/metrics.cpp
     src/runner.cpp
+    src/comparison.cpp
+    src/report.cpp
 )
 target_include_directories(tecflix-loadtest-core
     PUBLIC include
@@ -30,6 +32,9 @@ target_link_libraries(tecflix-loadtest-core
     PUBLIC Threads::Threads nlohmann_json::nlohmann_json
     PRIVATE httplib::httplib
 )
+
+add_executable(tecflix-loadtest src/main.cpp)
+target_link_libraries(tecflix-loadtest PRIVATE tecflix-loadtest-core)
 
 if(MSVC)
     target_compile_options(tecflix-loadtest-core PRIVATE /W4 /permissive-)
@@ -52,4 +57,9 @@ if(BUILD_TESTING)
     )
     add_test(NAME TecflixLoadtestRunner COMMAND tecflix-loadtest-runner-tests)
 
+    add_executable(tecflix-loadtest-comparison-tests tests/comparison_test.cpp)
+    target_link_libraries(tecflix-loadtest-comparison-tests
+        PRIVATE tecflix-loadtest-core
+    )
+    add_test(NAME TecflixLoadtestComparison COMMAND tecflix-loadtest-comparison-tests)
 endif()

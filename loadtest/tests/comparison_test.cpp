@@ -127,12 +127,37 @@ void TestRejectsEmptyComparisonReport() {
     Check(rejected, "no escribe reporte sin etapas");
 }
 
+void TestReportsTheFirstObservedFailure() {
+    using namespace tecflix::loadtest;
+    const auto report_dir = std::filesystem::temp_directory_path() /
+                            "tecflix-loadtest-stop-on-error-test";
+    std::error_code error;
+    std::filesystem::remove_all(report_dir, error);
+    MetricsCollector failed_metrics;
+    failed_metrics.Record("POST /api/auth/login", 1000, 503);
+    StageResult failed_stage;
+    failed_stage.elapsed_seconds = 1.0;
+    failed_stage.routes = failed_metrics.Snapshot();
+    PairedStageResult pair{1, failed_stage, failed_stage};
+    WorkloadConfig config;
+    config.users = ParseTarget("http://127.0.0.1:8081");
+    WriteComparisonReport(report_dir, "capacity", "login",
+                          config, config, {pair});
+    const auto report = nlohmann::json::parse(
+        std::ifstream(report_dir / "comparison.json"));
+    Check(report.at("first_observed_failure").at("single")
+                  .at("virtual_users") == 1,
+          "el reporte muestra el primer nivel con fallos");
+    std::filesystem::remove_all(report_dir, error);
+}
+
 }  // namespace
 
 int main() {
     TestSummaryIncludesThroughputLatencyAndRejections();
     TestWritesPairedJsonAndCsvReports();
     TestRejectsEmptyComparisonReport();
+    TestReportsTheFirstObservedFailure();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

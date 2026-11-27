@@ -38,6 +38,11 @@ std::vector<PairedStageResult> ComparisonRunner::Run(
         }
 
         results.push_back(std::move(pair));
+        if (config.stop_after_first_failure &&
+            (Summarize(results.back().single).failures != 0 ||
+             Summarize(results.back().dual).failures != 0)) {
+            break;
+        }
         if (index + 1 < config.stages.size() && config.cooldown.count() > 0) {
             std::this_thread::sleep_for(config.cooldown);
         }

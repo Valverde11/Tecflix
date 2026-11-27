@@ -59,6 +59,7 @@ httplib::Response& JsonResponse(httplib::Response& response, int status,
 
 struct FakeTecflix {
     std::atomic<std::uint64_t> login_requests{0};
+    std::atomic<bool> reject_logins{false};
     httplib::Server users;
     httplib::Server metadata;
     httplib::Server streaming;
@@ -75,6 +76,10 @@ struct FakeTecflix {
         users.Post("/api/auth/login", [this](const httplib::Request&,
                                              httplib::Response& response) {
             ++login_requests;
+            if (reject_logins.load()) {
+                JsonResponse(response, 503, {{"error", "overloaded"}});
+                return;
+            }
             JsonResponse(response, 200,
                          {{"token", "test-token"}, {"user", {{"id", 42}}}});
         });
@@ -224,6 +229,30 @@ void TestComparisonRunnerPairsEquivalentStages() {
           "ejecuta la topología dual");
 }
 
+void TestCapacityComparisonStopsAtFirstPairedFailure() {
+    FakeTecflix services;
+    services.reject_logins = true;
+    auto config = services.ReadOnlyConfig();
+    config.scenario = tecflix::loadtest::Scenario::login;
+
+    tecflix::loadtest::ComparisonConfig comparison;
+    comparison.single = config;
+    comparison.dual = config;
+    comparison.stages = {
+        {1, std::chrono::seconds(1)},
+        {2, std::chrono::seconds(1)},
+    };
+    comparison.stop_after_first_failure = true;
+
+    const auto results = tecflix::loadtest::ComparisonRunner().Run(comparison);
+    Check(results.size() == 1,
+          "detiene el perfil capacity después de completar el primer par con error");
+    Check(tecflix::loadtest::Summarize(results.front().single).failures > 0,
+          "registra el rechazo en topología single");
+    Check(tecflix::loadtest::Summarize(results.front().dual).failures > 0,
+          "completa y registra el par dual del nivel que falló");
+}
+
 }  // namespace
 
 int main() {
@@ -231,6 +260,7 @@ int main() {
     TestLoginScenarioMeasuresAuthenticationRequests();
     TestJourneyRejectsInvalidVideoIdBeforeNetworkCalls();
     TestComparisonRunnerPairsEquivalentStages();
+    TestCapacityComparisonStopsAtFirstPairedFailure();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

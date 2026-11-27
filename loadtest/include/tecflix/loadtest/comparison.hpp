@@ -18,6 +18,7 @@ struct ComparisonConfig {
     WorkloadConfig dual;
     std::vector<Stage> stages;
     std::chrono::seconds cooldown{0};
+    bool stop_after_first_failure = false;
 };
 
 class ComparisonRunner {

@@ -58,7 +58,7 @@ bool IsLocalHost(const std::string& host) {
         host == "::1" || host == "0:0:0:0:0:0:0:1") {
         return true;
     }
-    if (host.size() >= 4 &&
+    if (host.find(':') != std::string::npos && host.size() >= 4 &&
         (host.compare(0, 2, "fc") == 0 || host.compare(0, 2, "fd") == 0)) {
         return true;
     }

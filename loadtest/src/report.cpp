@@ -225,9 +225,10 @@ void WriteComparisonReport(const std::filesystem::path& output_directory,
          {{"rejection_status_codes", {429, 503}},
           {"note",
            "first_observed_failure marca el primer nivel con respuestas no 2xx "
-           "(incluye errores de red); rejected_429_503 identifica rechazos 429/503. "
-           "Los cambios de p95 y throughput son comparaciones observadas, no "
-           "umbrales aprobados por el equipo."}}},
+           "(incluye errores de red). En perfil capacity, la ejecución deja de "
+           "subir concurrencia tras completar el par single/dual del primer nivel "
+           "con fallos. rejected_429_503 identifica rechazos 429/503. Los cambios "
+           "de p95 y throughput son observaciones, no umbrales aprobados."}}},
     };
 
     WriteFile(json_path, report.dump(2) + "\n");

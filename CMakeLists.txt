@@ -62,6 +62,7 @@ else()
 endif()
 # Pruebas HTTP de autenticación/autorización, independientes de FFmpeg real.
 include(CTest)
+add_subdirectory(loadtest)
 if(BUILD_TESTING AND NOT WIN32)
     add_executable(streaming-auth-tests
         tests/streaming_auth_tests.cpp
