@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "tecflix/users/storage/user_repository.hpp"
 #include "tecflix/users/domain/user_error.hpp"
 #include "tecflix/users/quota_operation_journal.hpp"
 #include "temp_directory.hpp"

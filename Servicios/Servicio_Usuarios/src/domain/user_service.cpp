@@ -85,7 +85,7 @@ std::int64_t UserService::SystemClock() {
   return std::chrono::duration_cast<std::chrono::seconds>(now).count();
 }
 
-UserService::UserService(UserRepository& repository, PasswordHasher hasher,
+UserService::UserService(IUserRepository& repository, PasswordHasher hasher,
                          Clock clock, QuotaOperationJournal* journal)
     : repository_(repository),
       journal_(journal),

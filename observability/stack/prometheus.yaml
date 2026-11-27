@@ -26,23 +26,46 @@ scrape_configs:
     metrics_path: /probe
     params:
       module: [http_2xx]
+
     static_configs:
+      # Máquina A: macOS
       - targets: ["http://host.docker.internal:8081/health"]
         labels:
           service_name: user-service
-          service_instance_id: local-dev
+          service_instance_id: maquina-A
+
       - targets: ["http://host.docker.internal:8082/health"]
         labels:
           service_name: metadata-service
-          service_instance_id: local-dev
+          service_instance_id: maquina-A
+
       - targets: ["http://host.docker.internal:8083/health"]
         labels:
           service_name: streaming-service
-          service_instance_id: local-dev
+          service_instance_id: maquina-A
+
+      # Máquina B: Ubuntu ARM64
+      - targets: ["http://192.168.64.2:8081/health"]
+        labels:
+          service_name: user-service
+          service_instance_id: maquina-B
+
+      - targets: ["http://192.168.64.2:8082/health"]
+        labels:
+          service_name: metadata-service
+          service_instance_id: maquina-B
+
+      - targets: ["http://192.168.64.2:8083/health"]
+        labels:
+          service_name: streaming-service
+          service_instance_id: maquina-B
+
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
+
       - source_labels: [__param_target]
         target_label: instance
+
       - target_label: __address__
         replacement: blackbox-exporter:9115

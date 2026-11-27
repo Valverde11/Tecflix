@@ -14,6 +14,7 @@
 
 #include "tecflix/users/domain/user_error.hpp"
 #include "tecflix/users/domain/user_validator.hpp"
+#include "tecflix/users/storage/user_repository.hpp"
 #include "temp_directory.hpp"
 
 namespace tecflix::users {

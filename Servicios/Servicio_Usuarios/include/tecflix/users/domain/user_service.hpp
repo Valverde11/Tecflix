@@ -8,8 +8,7 @@
 
 #include "tecflix/users/security/password_hasher.hpp"
 #include "tecflix/users/quota_operation_journal.hpp"
-#include "tecflix/users/storage/user_repository.hpp"
-
+#include "tecflix/users/storage/i_user_repository.hpp"
 namespace tecflix::users {
 
 // Lo que se puede mostrar de un usuario. No tiene hash ni salt a propósito: si
@@ -60,7 +59,7 @@ class UserService {
   static std::int64_t SystemClock();
 
   // repository debe vivir más que este servicio.
-  UserService(UserRepository& repository, PasswordHasher hasher,
+  UserService(IUserRepository& repository, PasswordHasher hasher,
               Clock clock = SystemClock, QuotaOperationJournal* journal = nullptr);
 
   UserProfile Register(const Registration& registration);
@@ -95,7 +94,7 @@ class UserService {
   // Repara PREPARE pendientes, siempre bajo repository_mutex_.
   void RecoverPendingQuotaOperations();
 
-  UserRepository& repository_;
+  IUserRepository& repository_;
   QuotaOperationJournal* journal_;
   std::mutex repository_mutex_;
   PasswordHasher hasher_;

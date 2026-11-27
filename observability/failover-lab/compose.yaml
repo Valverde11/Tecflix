@@ -1,0 +1,11 @@
+services:
+  haproxy:
+    image: haproxy:3.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9081:9081"
+      - "127.0.0.1:9082:9082"
+      - "127.0.0.1:9083:9083"
+      - "127.0.0.1:9099:9099"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

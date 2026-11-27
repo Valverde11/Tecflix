@@ -21,12 +21,15 @@
 ```bash
 cd ~/Programacion/Tecflix
 set -a; source .env; set +a
+export OTEL_SERVICE_NAME=user-service
+export SERVICE_INSTANCE_ID=maquina-A
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 export PORT=8081
+echo "DATA_DIR=${DATA_DIR:-NO_CONFIGURADO}"
+./Servicios/Servicio_Usuarios/build/user-service
 # IMPORTANTE: usar siempre el directorio donde se crearon las cuentas.
 # Si ya tienes DATA_DIR definido, NO lo reemplaces con mktemp:
-echo "DATA_DIR=${DATA_DIR:-NO_CONFIGURADO}"
 # Si quedó vacío, define explícitamente la ruta PERSISTENTE correcta antes de arrancar.
-./Servicios/Servicio_Usuarios/build/user-service
 ```
 
 - Cambiar `DATA_DIR` hace que las cuentas y el historial de cuotas parezcan desaparecer.
@@ -61,8 +64,11 @@ No ejecutes `dropDatabase`, `deleteMany` ni limpiezas manuales para resolver cuo
 cd ~/Programacion/Tecflix
 set -a; source .env; set +a
 export PORT=8082
-export MONGO_URI='mongodb://127.0.0.1:27017'
-export MONGO_DB='tecflix_metadata'
+export MONGO_URI=mongodb://127.0.0.1:27017
+export MONGO_DB=tecflix_metadata
+export OTEL_SERVICE_NAME=metadata-service
+export SERVICE_INSTANCE_ID=maquina-A
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 ./tecflix-metadata/services/metadata-service/build-mongo/metadata-service
 ```
 
@@ -81,6 +87,9 @@ export TECFLIX_ENABLE_METADATA_AUTH=1
 export TECFLIX_METADATA_HOST=127.0.0.1
 export TECFLIX_METADATA_PORT=8082
 export TECFLIX_FFMPEG="$(command -v ffmpeg)"
+export OTEL_SERVICE_NAME=streaming-service
+export SERVICE_INSTANCE_ID=maquina-A
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 # Si YA tienes la ruta persistente correcta, conserva su valor:
 echo "TECFLIX_STORAGE=${TECFLIX_STORAGE:-NO_CONFIGURADO}"
 # Solo para una prueba AISLADA nueva, si no hay videos que conservar:

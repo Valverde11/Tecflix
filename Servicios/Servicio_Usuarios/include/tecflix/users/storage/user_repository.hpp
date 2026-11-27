@@ -5,19 +5,12 @@
 #include <optional>
 #include <string>
 
+#include "tecflix/users/storage/i_user_repository.hpp"
 #include "tecflix/users/btree/btree.hpp"
 #include "tecflix/users/storage/user_data_file.hpp"
 #include "tecflix/users/storage/user_record.hpp"
 
 namespace tecflix::users {
-
-enum class WriteStatus { kSuccess, kNotFound, kUsernameTaken, kEmailTaken };
-
-struct CreateResult {
-  WriteStatus status;
-  std::optional<UserRecord> user;  // solo con kSuccess
-};
-
 // Une el archivo de datos con sus tres árboles B: por id, por username y por
 // email. Los cuatro archivos se tratan como una sola colección de usuarios.
 //
@@ -32,7 +25,7 @@ struct CreateResult {
 //
 // No es segura entre hilos, ni siquiera para leer: buscar mueve la posición de
 // los archivos abiertos. UserService protege cada acceso con un mutex.
-class UserRepository {
+class UserRepository : public IUserRepository {
  public:
   static constexpr const char* kDataFileName = "users.dat";
   static constexpr const char* kIdIndexFileName = "users_by_id.idx";
@@ -47,20 +40,20 @@ class UserRepository {
   // Guarda un usuario nuevo y devuelve el registro con el id asignado; ignora
   // los campos id y deleted recibidos. Lanza std::invalid_argument, sin escribir
   // nada, si algún campo no cabe en su tamaño fijo.
-  CreateResult Create(const UserRecord& draft);
+  CreateResult Create(const UserRecord& draft) override;
 
-  std::optional<UserRecord> FindById(std::uint64_t id);
+  std::optional<UserRecord> FindById(std::uint64_t id) override;
   // Lanza std::invalid_argument si el username no puede ser una clave válida.
-  std::optional<UserRecord> FindByUsername(const std::string& username);
+  std::optional<UserRecord> FindByUsername(const std::string& username) override;
 
   // Reemplaza el usuario con record.id. Lanza std::invalid_argument, sin
   // escribir nada, si algún campo no cabe o si record.deleted es true: la única
   // forma de eliminar es Remove, que además limpia los índices.
-  WriteStatus Update(const UserRecord& record);
+  WriteStatus Update(const UserRecord& record) override;
 
   // Devuelve false si el usuario no existe. Username y email quedan libres, pero
   // el id no se reutiliza.
-  bool Remove(std::uint64_t id);
+  bool Remove(std::uint64_t id) override;
 
  private:
   // Los índices pueden apuntar a un registro eliminado si el proceso se cayó en
