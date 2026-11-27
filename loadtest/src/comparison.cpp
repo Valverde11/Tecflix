@@ -1,4 +1,5 @@
 #include "tecflix/loadtest/comparison.hpp"
+#include "tecflix/loadtest/report.hpp"
 
 #include <stdexcept>
 #include <thread>
