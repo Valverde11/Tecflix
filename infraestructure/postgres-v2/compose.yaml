@@ -1,0 +1,28 @@
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: tecflix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Password required}
+      POSTGRES_DB: tecflix_v2
+
+    ports:
+      - "127.0.0.1:55432:5432"
+
+    volumes:
+      - postgres_v2_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tecflix -d tecflix_v2"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_v2_data:
+
+
