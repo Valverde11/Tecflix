@@ -88,7 +88,7 @@ Una variable vacía se trata igual que una no definida. El SDK envía por defect
 
 ### 5.3 Métricas que emite
 
-- Histograma `http.server.request.duration`, unidad segundos, **límites de los buckets**: 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.3, 0.5, 1.0.
+- Histograma `http.server.request.duration`, unidad segundos, **límites de los buckets**: 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.3, 0.5, 1.0, 2.5, 5, 10. (V1: solo 0.025–1.0; en V2.0 se agregaron los de menos de 25 ms, donde responde casi toda ruta, y los de más de 1 s.)
 - Atributos: `http.request.method`, `http.route`, `http.response.status_code`. Recurso: `service.name`, `service.instance.id`.
 - Contador `tecflix.http.server.requests` (redundante: el `_count` del histograma ya cuenta solicitudes; el dashboard no lo usa).
 - Nombres en Prometheus: `http_server_request_duration_seconds_{bucket,count,sum}` con etiquetas `service_name`, `service_instance_id`, `http_route`, `http_request_method`, `http_response_status_code` (además de `job`, `instance`, `exported_job`, `exported_instance`, `telemetry_sdk_*`). **Agrupar siempre por `service_instance_id`**, no por `instance` (que es el Collector).
@@ -190,7 +190,7 @@ Pruebas rápidas sin OpenTelemetry: `cmake -S observability -B observability/bui
 - `SERVICE_INSTANCE_ID` por defecto es `instance-1`: dos máquinas sin la variable mezclan sus datos.
 - El Collector es único: es un punto único de falla de la observabilidad en la versión 2.0.
 - `/health` también se mide; si algo lo consulta con frecuencia aparecerá como una ruta más.
-- El histograma llega hasta 1 s: un p99 real mayor se ve como 1 s. Ajustar los buckets si las rutas de streaming son más lentas.
+- El histograma llega hasta 10 s: un p99 real mayor se ve como 10 s.
 - Contraseña inicial de Grafana (`admin`/`admin`) y puertos sin autenticación: aceptable solo en local.
 
 ## 12. Hoja de ruta para terminar el módulo

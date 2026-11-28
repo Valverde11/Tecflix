@@ -1,0 +1,21 @@
+# Journey 4 VUs 20 s; buckets y percentiles por ruta desde Prometheus (rate 1m)
+Fri Nov 27 19:49:34 CST 2026
+[0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.2, 0.3, 0.5, 1.0, 2.5, 5.0, 10.0, inf]
+p0.5 user-service /api/users/me 0.26 ms
+p0.5 user-service /api/users nan ms
+p0.5 metadata-service /api/metadata/videos 18.11 ms
+p0.5 metadata-service /api/metadata/videos/:id 0.44 ms
+p0.5 streaming-service /api/videos/:id/index.m3u8 0.26 ms
+p0.5 user-service /api/auth/login 191.03 ms
+p0.5 streaming-service /api/videos/:id 0.3 ms
+p0.5 streaming-service /api/videos/:id/segments/:segment 0.26 ms
+p0.5 user-service /api/users/:id/quota 0.25 ms
+p0.95 metadata-service /api/metadata/videos 33.33 ms
+p0.95 streaming-service /api/videos/:id 6.0 ms
+p0.95 streaming-service /api/videos/:id/index.m3u8 0.5 ms
+p0.95 user-service /api/users/:id/quota 0.47 ms
+p0.95 user-service /api/users/me 0.5 ms
+p0.95 metadata-service /api/metadata/videos/:id 1.51 ms
+p0.95 streaming-service /api/videos/:id/segments/:segment 0.49 ms
+p0.95 user-service /api/auth/login 287.2 ms
+p0.95 user-service /api/users nan ms

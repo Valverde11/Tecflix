@@ -83,8 +83,15 @@ namespace tecflix::telemetry {
 
             auto views = std::make_unique<metrics_sdk::ViewRegistry>();
             auto histogram_config = std::make_shared<metrics_sdk::HistogramAggregationConfig>();
+            // Se conservan los límites de la V1 (25 ms - 1 s) para que los paneles y las
+            // comparaciones sigan siendo continuos, y se agregan:
+            //  - debajo de 25 ms: casi todas las rutas responden en 1-20 ms y antes todas
+            //    caían en el primer bucket (p50 = 12.5 ms fijo, por interpolación);
+            //  - arriba de 1 s: antes cualquier latencia mayor se reportaba como 1 s.
             histogram_config->boundaries_ = {
-                0.025, 0.050, 0.075, 0.100, 0.125, 0.150, 0.200, 0.300, 0.500, 1.000};
+                0.0005, 0.001, 0.0025, 0.005, 0.010,
+                0.025, 0.050, 0.075, 0.100, 0.125, 0.150, 0.200, 0.300, 0.500, 1.000,
+                2.500, 5.000, 10.000};
 
             views->AddView(
                 std::make_unique<metrics_sdk::InstrumentSelector>(
