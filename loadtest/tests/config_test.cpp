@@ -65,6 +65,29 @@ void TestRejectsUnsafeOrMalformedUrls() {
                 "rechaza IPv6 sin corchetes");
     CheckThrows([] { ParseTarget("http://fdomain.example"); },
                 "no interpreta prefijo de hostname como IPv6 privado");
+        CheckThrows([] { ParseTarget("http://[::1"); },
+                "rechaza IPv6 sin corchete de cierre");
+        CheckThrows([] { ParseTarget("http://[::1]suffix"); },
+                "rechaza sufijo inválido después de IPv6");
+        CheckThrows([] { ParseTarget("http://localhost:"); },
+                "rechaza puerto vacío");
+        CheckThrows([] { ParseTarget("http://bad_host.local"); },
+                "rechaza caracteres inválidos en host");
+    }
+
+    void TestRecognizesLocalHostSuffixesAndPrivateIpv6() {
+        using tecflix::loadtest::ParseTarget;
+        Check(ParseTarget("http://host.docker.internal").host ==
+              "host.docker.internal",
+            "acepta host reservado de Docker");
+        Check(ParseTarget("http://api.local").host == "api.local",
+            "acepta dominio local");
+        Check(ParseTarget("http://api.test").host == "api.test",
+            "acepta dominio de pruebas");
+        Check(ParseTarget("http://[fc00::1]").host == "fc00::1",
+            "acepta rango ULA IPv6 fc");
+        Check(ParseTarget("http://[fd00::1]").host == "fd00::1",
+            "acepta rango ULA IPv6 fd");
 }
 
 void TestProfilesAndBoundaries() {
@@ -89,6 +112,32 @@ void TestProfilesAndBoundaries() {
     settings.max_virtual_users = 10;
     settings.stage_duration = std::chrono::seconds(301);
     CheckThrows([&] { BuildStages(settings); }, "limita duración a 300 segundos");
+
+        settings.stage_duration = std::chrono::seconds(0);
+        CheckThrows([&] { BuildStages(settings); }, "rechaza duración cero");
+
+        settings.stage_duration = std::chrono::seconds(10);
+        settings.max_virtual_users = 0;
+        CheckThrows([&] { BuildStages(settings); }, "rechaza cero VUs");
+
+        settings.max_virtual_users = 5;
+        settings.profile = Profile::smoke;
+        const auto smoke_stages = BuildStages(settings);
+        Check(smoke_stages.size() == 1 && smoke_stages.front().virtual_users == 1,
+            "smoke produce una etapa de un usuario");
+
+        settings.profile = Profile::fixed;
+        const auto fixed_stages = BuildStages(settings);
+        Check(fixed_stages.size() == 1 && fixed_stages.front().virtual_users == 5,
+            "fixed produce una etapa con el máximo configurado");
+
+        Check(ToString(Profile::smoke) == "smoke" &&
+              ToString(Profile::fixed) == "fixed" &&
+              ToString(Profile::capacity) == "capacity",
+            "convierte todos los perfiles a texto");
+        Check(ToString(Scenario::read_only_journey) == "read-only" &&
+              ToString(Scenario::login) == "login",
+            "convierte todos los escenarios a texto");
 }
 
 }  // namespace
@@ -97,6 +146,7 @@ int main() {
     TestLocalAndPrivateTargets();
     TestExactExternalAllowlist();
     TestRejectsUnsafeOrMalformedUrls();
+    TestRecognizesLocalHostSuffixesAndPrivateIpv6();
     TestProfilesAndBoundaries();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
