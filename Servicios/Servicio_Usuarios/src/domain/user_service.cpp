@@ -86,9 +86,10 @@ std::int64_t UserService::SystemClock() {
 }
 
 UserService::UserService(IUserRepository& repository, PasswordHasher hasher,
-                         Clock clock, QuotaOperationJournal* journal)
+                         Clock clock, QuotaOperationJournal* journal, IQuotaStore* quota_store)
     : repository_(repository),
       journal_(journal),
+      quota_store_(quota_store),
       hasher_(std::move(hasher)),
       clock_(std::move(clock)) {
   // La recuperación termina antes de admitir tráfico HTTP.
@@ -177,7 +178,7 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
   }
 
   RequireSuccess(repository_.Update(record));
-  return ToProfile(record);
+  return ToProfile(LoadUser(id));
 }
 
 void UserService::Delete(std::uint64_t id) {
@@ -212,6 +213,10 @@ void UserService::RecoverPendingQuotaOperations() {
 QuotaUsage UserService::ApplyQuotaOperation(
     std::uint64_t id, const std::string& operation_id,
     std::int64_t delta_bytes) {
+  if (quota_store_) {
+    const QuotaState state = quota_store_->Apply(id, operation_id, delta_bytes);
+    return {state.quota_bytes, state.used_bytes};
+  }
   if (!journal_) {
     throw std::logic_error("El diario persistente de cuotas no está configurado");
   }
@@ -262,6 +267,10 @@ QuotaUsage UserService::ApplyQuotaOperation(
 }
 
 QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
+  if (quota_store_) {
+    throw UserError(UserErrorCode::kInvalidQuotaOperation,
+                    "En PostgreSQL las reservas requieren operationId");
+  }
   // Leer, validar y escribir van bajo el mismo candado: si otra subida entrara
   // entre medio, las dos pasarían la validación y una suma se perdería.
   const std::lock_guard lock(repository_mutex_);
@@ -279,6 +288,10 @@ QuotaUsage UserService::ReserveSpace(std::uint64_t id, std::uint64_t bytes) {
 }
 
 QuotaUsage UserService::ReleaseSpace(std::uint64_t id, std::uint64_t bytes) {
+  if (quota_store_) {
+    throw UserError(UserErrorCode::kInvalidQuotaOperation,
+                    "En PostgreSQL las liberaciones requieren operationId");
+  }
   const std::lock_guard lock(repository_mutex_);
   RecoverPendingQuotaOperations();
   UserRecord record = LoadUser(id);

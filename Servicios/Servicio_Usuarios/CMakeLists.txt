@@ -59,6 +59,18 @@ target_link_libraries(user_service_core
         user_service_warnings
 )
 
+option(USER_SERVICE_ENABLE_POSTGRES "Habilita PostgreSQL V2 (requiere libpqxx y C++20)" OFF)
+if(USER_SERVICE_ENABLE_POSTGRES)
+    find_package(PostgreSQL REQUIRED)
+    find_path(PQXX_INCLUDE_DIR NAMES pqxx/pqxx REQUIRED)
+    find_library(PQXX_LIBRARY NAMES pqxx REQUIRED)
+    target_sources(user_service_core PRIVATE src/storage/postgres_user_repository.cpp)
+    target_include_directories(user_service_core PRIVATE "${PQXX_INCLUDE_DIR}")
+    target_link_libraries(user_service_core PRIVATE "${PQXX_LIBRARY}" PostgreSQL::PostgreSQL)
+    target_compile_definitions(user_service_core PUBLIC TECFLIX_USERS_POSTGRES=1)
+    set_property(TARGET user_service_core PROPERTY CXX_STANDARD 20)
+endif()
+
 option(TECFLIX_REAL_TELEMETRY "Exportar métricas reales de usuarios a OTLP" ON)
 if(TECFLIX_REAL_TELEMETRY)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../observability/telemetry"
