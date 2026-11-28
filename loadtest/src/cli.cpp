@@ -21,8 +21,9 @@ constexpr const char* kUsage =
     "\n"
     "Credenciales (solo por entorno): LOADTEST_USERNAME y LOADTEST_PASSWORD.\n"
     "El escenario read-only también requiere LOADTEST_VIDEO_ID (video listo).\n"
-    "Los destinos son HTTP y locales/privados; hosts externos exigen\n"
-    "LOADTEST_ALLOWED_HOSTS con nombres exactos y un entorno de prueba autorizado.\n";
+    "Los destinos usan HTTP. smoke solo admite hosts locales/privados.\n"
+    "fixed y capacity pueden usar hosts externos si están en\n"
+    "LOADTEST_ALLOWED_HOSTS y el entorno está autorizado.\n";
 
 std::string RequiredEnvironment(
     const std::map<std::string, std::string>& environment,
@@ -98,8 +99,23 @@ std::string NextValue(const std::vector<std::string>& arguments,
 }
 
 void ValidateTarget(const std::string& url,
-                    const std::vector<std::string>& allowed_hosts) {
-    (void)ParseTarget(url, allowed_hosts);
+                    const std::vector<std::string>& allowed_hosts,
+                    Profile profile) {
+    if (profile != Profile::smoke) {
+        (void)ParseTarget(url, allowed_hosts);
+        return;
+    }
+
+    try {
+        (void)ParseTarget(url);
+    } catch (const std::invalid_argument& error) {
+        if (std::string(error.what()).find(
+                "El destino no es local ni privado") != std::string::npos) {
+            throw std::invalid_argument(
+                "El perfil smoke solo admite destinos locales o privados");
+        }
+        throw;
+    }
 }
 
 }  // namespace
@@ -225,13 +241,17 @@ CommandLineArguments ParseCommandLine(
     }
 
     parsed.allowed_hosts = AllowedHostsFromEnvironment(environment);
-    ValidateTarget(parsed.single_users_url, parsed.allowed_hosts);
-    ValidateTarget(parsed.dual_users_url, parsed.allowed_hosts);
+    ValidateTarget(parsed.single_users_url, parsed.allowed_hosts, parsed.profile);
+    ValidateTarget(parsed.dual_users_url, parsed.allowed_hosts, parsed.profile);
     if (parsed.scenario == Scenario::read_only_journey) {
-        ValidateTarget(parsed.single_metadata_url, parsed.allowed_hosts);
-        ValidateTarget(parsed.dual_metadata_url, parsed.allowed_hosts);
-        ValidateTarget(parsed.single_streaming_url, parsed.allowed_hosts);
-        ValidateTarget(parsed.dual_streaming_url, parsed.allowed_hosts);
+        ValidateTarget(parsed.single_metadata_url, parsed.allowed_hosts,
+                       parsed.profile);
+        ValidateTarget(parsed.dual_metadata_url, parsed.allowed_hosts,
+                       parsed.profile);
+        ValidateTarget(parsed.single_streaming_url, parsed.allowed_hosts,
+                       parsed.profile);
+        ValidateTarget(parsed.dual_streaming_url, parsed.allowed_hosts,
+                       parsed.profile);
     }
     return parsed;
 }
