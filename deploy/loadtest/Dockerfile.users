@@ -1,0 +1,34 @@
+FROM debian:trixie-slim AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates cmake git ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY Servicios/Servicio_Usuarios Servicios/Servicio_Usuarios
+COPY shared/auth shared/auth
+
+RUN cmake -S Servicios/Servicio_Usuarios -B /build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DUSER_SERVICE_BUILD_TESTS=OFF \
+      -DTECFLIX_REAL_TELEMETRY=OFF \
+    && cmake --build /build --target user-service --parallel 3
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/tecflix/users
+
+COPY --from=build /build/user-service /usr/local/bin/user-service
+
+ENV PORT=8081 \
+    DATA_DIR=/var/lib/tecflix/users \
+    CORS_ORIGIN=http://localhost:5173
+
+VOLUME ["/var/lib/tecflix/users"]
+EXPOSE 8081
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8081/health || exit 1
+ENTRYPOINT ["/usr/local/bin/user-service"]

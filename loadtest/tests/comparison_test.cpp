@@ -132,7 +132,7 @@ void TestWritesPairedJsonAndCsvReports() {
         std::ifstream csv_file(csv_path);
         std::string csv((std::istreambuf_iterator<char>(csv_file)),
                         std::istreambuf_iterator<char>());
-        Check(csv.find("vus,single_requests,dual_requests") == 0,
+          Check(csv.find("comparison_status,vus,single_requests,dual_requests") == 0,
               "CSV incluye métricas pareadas en encabezados consistentes");
         Check(csv.find("5,2,3,0,1,0,1") != std::string::npos,
               "CSV empareja resultados de topologías single y dual");

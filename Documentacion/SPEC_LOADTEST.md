@@ -2,7 +2,7 @@
 
 Este documento define el alcance y las decisiones para las pruebas de carga de Tecflix. Complementa `SPEC.md` y `SPEC_DASHBOARD.md`; si hay una contradicción, prevalece `SPEC.md`. Es la fuente de verdad para cualquier implementación de load testing que se agregue en prompts posteriores.
 
-**Estado:** existe el generador C++17 `tecflix-loadtest`, con pruebas de configuración, métricas, runner, comparación, reportes y CLI. Los topes 200/50, niveles capacity, umbrales configurables y reporte JSON de parada están implementados y probados. El workflow raíz ejecuta CTest dentro del job de Streaming; faltan un job/cobertura específicos de loadtest. También faltan las topologías Docker single/dual y la restricción de smoke local/privado en el parser. No hay resultados reales de despliegue V2 registrados.
+**Estado:** existe el generador C++17 `tecflix-loadtest`, con pruebas de configuración, métricas, runner, comparación, reportes y CLI. Los topes 200/50, niveles capacity, umbrales configurables y reporte JSON de parada están implementados y probados. El workflow raíz ejecuta CTest dentro del job de Streaming; faltan un job/cobertura específicos de loadtest. La topología dual completa está **bloqueada: requiere decisión de diseño del equipo** por estado local no coordinado en Users y Streaming. Fase 4 entregará solo una topología parcial (Metadata x2; Users y Streaming x1), marcada provisional y no equivalente al requisito dual. No hay resultados reales de despliegue V2 registrados.
 **Alcance:** carga y estrés concurrente de APIs Tecflix y comparación de topologías de una instancia y dos instancias. No cambia la lógica de negocio.
 
 ## 1. Objetivo
@@ -48,12 +48,13 @@ La sección 4.3 de `SPEC.md` y el requisito V2 del PDF del proyecto requieren de
 12. Compilar y probar el generador en CI con cobertura; nunca ejecutar carga real en CI. Actualmente el workflow raíz ejecuta sus pruebas CTest como parte del job de Streaming, pero falta un job y reporte/umbral de cobertura específicos de loadtest.
 13. Las corridas `smoke` son exclusivamente locales/privadas; nunca ejecutarlas contra hosts externos.
 14. Mantener credenciales, secretos, videos, quarantine y resultados voluminosos fuera del control de versiones.
+15. La topología parcial con Metadata x2 y Users/Streaming x1 se etiqueta en Compose, README, guía y cada reporte JSON/CSV como **“provisional, solo valida la herramienta”**. No cuenta como cumplimiento de dos instancias por API ni produce evidencia de capacidad/HA comparable con el requisito dual.
 
 ## 4. Criterios de aceptación
 
 - El ejecutable C++ se compila y sus pruebas CMake/CTest cubren configuración, argumentos del CLI, métricas, escenarios HTTP, reportes y comparación; CI publica/verifica cobertura del componente.
 - Se puede ejecutar cada escenario contra destinos autorizados con credenciales desde el entorno.
-- El reporte JSON y CSV distingue perfil, escenario, destinos, etapas, concurrencia, duración, latencia, throughput, fallos, respuestas 429/503 y cambios entre topologías.
+- El reporte JSON y CSV distingue perfil, escenario, destinos, etapas, concurrencia, duración, latencia, throughput, fallos, respuestas 429/503 y cambios entre topologías; incluye la etiqueta `provisional, solo valida la herramienta` para la topología parcial de esta fase.
 - La comparación mantiene el mismo escenario y carga para las dos configuraciones; en `capacity` completa ambas antes de detenerse al detectar fallos.
 - Para `capacity`, los límites por defecto son estrictamente >1% de fallos o >2000 ms de p95 en cualquiera de las topologías; `--max-failure-percent` y `--max-p95-ms` validan y reemplazan esos límites.
 - El componente obtiene al menos 90% de cobertura en CI; la carga de servicios reales no se ejecuta en pipelines. La cobertura local actual supera 90%, pero CI aún no mide ni aplica el umbral para loadtest.
@@ -66,8 +67,8 @@ La sección 4.3 de `SPEC.md` y el requisito V2 del PDF del proyecto requieren de
 | # | Decisión acordada | Motivo | Estado |
 |---|---|---|---|
 | 1 | C++ `tecflix-loadtest`; k6 descartado para esta entrega. | Mantener la pila de los servicios, evitar dependencias externas y producir reportes JSON propios. | Implementado: CLI C++ y pruebas de componente existentes. |
-| 2 | Nginx en Docker; compose separado para single y dual. En dual, round-robin con healthchecks pasivos. | Comparar despliegues repetibles de una y dos réplicas por servicio. | Pendiente: faltan Compose y configuración. |
-| 3 | Balancear Users, Metadata y Streaming; excluir la aplicación web. | El requisito V2 pide redundancia en APIs, no en frontend. | Pendiente: despliegue de las topologías. |
+| 2 | Nginx en Docker; compose separado para single y dual. En dual, round-robin con healthchecks pasivos. | Comparar despliegues repetibles de una y dos réplicas por servicio. | Bloqueado para dual completo: requiere decisión del equipo sobre coordinación de estado en Users/Streaming. Fase 4 implementará una topología parcial, provisional y no equivalente. |
+| 3 | Balancear Users, Metadata y Streaming; excluir la aplicación web. | El requisito V2 pide redundancia en APIs, no en frontend. | Parcial provisional: Nginx balanceará Metadata x2; Users y Streaming quedarán x1. Metadata puede compartir Mongo; las tres APIs no estarán duplicadas. |
 | 4 | Tope read-only 200 VUs, login 50; etapas máximo 300 s; `--max-vus` configurable dentro del límite. Capacity sube por niveles hasta el máximo (p. ej. 1, 5, 10, 20, 40, 80, 120, 160, 200). | Explorar concurrencia de manera progresiva sin exceder el límite acordado. | Implementado: topes y niveles progresivos; `--max-vus` puede reducir el máximo. |
 | 5 | Capacity se degrada si fallos >1% o p95 >2000 ms en cualquiera de las topologías. Añadir `--max-failure-percent` y `--max-p95-ms`, y reportar etapa/criterio de parada. | No detener por errores aislados; definir un punto de degradación reproducible y ajustable. | Implementado: defaults, overrides validados, par completo y criterio/etapa en JSON. |
 | 6 | Mantener login y read-only; excluir subida/transcodificación de esta entrega. | La subida consume cuota, genera datos persistentes y mezcla costo de transcodificación con entrega de segmentos. | Implementado como alcance del runner; documentada como limitación. |
@@ -83,8 +84,9 @@ La sección 4.3 de `SPEC.md` y el requisito V2 del PDF del proyecto requieren de
 ### Estado validado frente a objetivo
 
 - **Especificado:** las ocho decisiones de la tabla y los criterios anteriores.
-- **Implementado:** CLI C++17; escenarios `login`/`read-only`; perfiles `smoke`/`fixed`/`capacity`; topes 200/50 VUs y niveles capacity `1, 5, 10, 20, 40, 80, 120, 160, 200` recortados al máximo; etapas 1–300 s; cooldown 0–300 s; umbrales estrictos configurables; comparación pareada; JSON `capacity_stop`; métricas y reportes JSON/CSV; tests CTest de configuración, métricas, runner, comparación, reportes y CLI.
-- **Pendiente:** topologías Nginx/Docker single/dual; restricción de smoke local/privado en el parser; job/cobertura específicos de CI; campañas reales.
+- **Implementado:** CLI C++17; escenarios `login`/`read-only`; perfiles `smoke`/`fixed`/`capacity`; topes 200/50 VUs y niveles capacity `1, 5, 10, 20, 40, 80, 120, 160, 200` recortados al máximo; etapas 1–300 s; cooldown 0–300 s; umbrales estrictos configurables; comparación pareada; JSON `capacity_stop`; métricas y reportes JSON/CSV.
+- **Fase 4 parcial:** Compose single (Users/Metadata/Streaming x1) y dual provisional (Metadata x2, Users/Streaming x1), Mongo compartido, Nginx y Dockerfiles. Toda comparación generada por esta herramienta incluye `provisional, solo valida la herramienta` en JSON y CSV mientras Users/Streaming no estén duplicados.
+- **Pendiente/bloqueado:** dual completa con Users x2 y Streaming x2 (requiere decisión de diseño del equipo sobre estado/persistencia); restricción de smoke local/privado en el parser; job/cobertura específicos de CI; campañas reales.
 - **Validado:** el 2026-11-28, con GCC 16.2.1 y CMake 4.5.1, el build completo del CMake raíz pasó y CTest pasó 10/10. gcov midió 752/813 líneas (92.50%) en `loadtest/src/*.cpp`: CLI 91.19%, comparison 96.36%, config 98.63%, metrics 98.25%, report 92.86% y runner 86.84%. Se probaron límites estrictos, ambos criterios, ambas topologías, validación de argumentos y campos del JSON de parada. CI aún no aplica la medición. No se afirman topologías funcionales ni resultados de desempeño real.
 
 Las mediciones del harness no sustituyen una campaña real sobre ambas topologías. El primer error observado depende del entorno, datos, duración, rutas y perfil, y no representa un límite universal.
@@ -102,8 +104,8 @@ Las mediciones del harness no sustituyen una campaña real sobre ambas topologí
 ## Agent memory
 
 - Decisión 1: se eligió el generador C++ `tecflix-loadtest` y se descartó k6 por mantener la pila C++, evitar dependencias externas y generar JSON propio. **Estado:** ejecutable y tests de componente implementados; CTest corre en el workflow raíz; falta job/cobertura específicos de loadtest.
-- Decisión 2: se acordó Nginx en Docker, Compose single/dual y round-robin con healthchecks pasivos. **Estado:** pendiente de implementar.
-- Decisión 3: se acordó balancear Users, Metadata y Streaming; la web queda fuera porque el requisito V2 se refiere a APIs. **Estado:** topologías pendientes.
+- Decisión 2: se acordó Nginx en Docker, Compose single/dual y round-robin con healthchecks pasivos. **Estado:** Fase 4 implementará Compose parcial; dual completa bloqueada por falta de estado coordinado en Users/Streaming.
+- Decisión 3: se acordó balancear Users, Metadata y Streaming; la web queda fuera porque el requisito V2 se refiere a APIs. **Estado:** topología parcial provisional Metadata x2, Users/Streaming x1; no equivale al requisito dual.
 - Decisión 4: se acordó máximo 200 VUs read-only, 50 login y etapas de hasta 300 s para explorar mayor concurrencia. **Estado:** implementado y validado con tests de topes y niveles capacity.
 - Decisión 5: se acordó degradación de capacity ante >1% de fallos o p95 >2000 ms, configurable por argumentos CLI. **Estado:** implementado y validado; el par termina antes de parar y JSON registra etapa, topología y criterio.
 - Decisión 6: se excluyó subida/transcodificación porque consume cuota, crea datos persistentes y mezcla costos distintos. **Estado:** runner solo implementa login/read-only.
@@ -112,3 +114,4 @@ Las mediciones del harness no sustituyen una campaña real sobre ambas topologí
 - C++17, rutas, perfiles actuales, formatos de reporte y sus diferencias con las decisiones aprobadas se detallan en las secciones 3 y 5. Todavía no hay resultados reales de campañas V2 ni métricas de cobertura que declarar.
 - Fase 2: probar reportes, degradación de comparación y validación del CLI mediante casos aislados; extraer el parser con el cambio mínimo para inyectar argumentos/entorno y no depender de secretos ni servicios externos. **Estado:** cerrada en `810e62b`; después de Fase 3, los tests de umbral del contrato real también pasan.
 - Fase 3: subir topes y reemplazar la parada ante cualquier fallo por umbrales configurables. **Estado:** implementada y validada el 2026-11-28; build completo, CTest 10/10 y gcov core 92.50%.
+- Fase 4: el equipo decidió no cambiar estado ni persistencia de Users/Streaming en esta tarea. **Estado:** Compose parcial en proceso; dual completa bloqueada para una decisión posterior. Evidencia: Users usa `user_repository.hpp:33`, `user_service.hpp:100`, `binary_file.cpp:10` y `quota_operation_journal.cpp:108`; Streaming mantiene `VideoService.h:79,86`, recupera registros en `VideoService.cpp:69` y escribe segmentos en `FfmpegTranscoder.cpp:27`. Metadata sí puede compartir Mongo (`repository_factory.cpp:14`). Compose, guía y reportes JSON/CSV de la topología Metadata x2 se etiquetan “provisional, solo valida la herramienta”.

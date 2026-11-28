@@ -15,6 +15,8 @@ namespace tecflix::loadtest {
 namespace {
 
 using Json = nlohmann::json;
+constexpr const char* kComparisonStatus =
+    "provisional, solo valida la herramienta";
 
 Json SummarizeRoutes(const std::map<std::string, RouteMetrics>& routes) {
     Json output = Json::object();
@@ -86,7 +88,8 @@ std::string CsvNumber(double value) {
 
 std::string BuildCsv(const std::vector<PairedStageResult>& results) {
     std::ostringstream output;
-    output << "vus,single_requests,dual_requests,single_failures,dual_failures,"
+    output << "comparison_status,vus,single_requests,dual_requests,"
+              "single_failures,dual_failures,"
               "single_rejected,dual_rejected,single_requests_per_second,"
               "dual_requests_per_second,single_failure_percent,"
               "dual_failure_percent,single_p50_ms,dual_p50_ms,single_p95_ms,"
@@ -98,7 +101,8 @@ std::string BuildCsv(const std::vector<PairedStageResult>& results) {
             if (baseline == 0.0) return std::string{};
             return CsvNumber((comparison - baseline) * 100.0 / baseline);
         };
-        output << pair.virtual_users << ',' << single.requests << ','
+         output << '"' << kComparisonStatus << "\"," << pair.virtual_users
+             << ',' << single.requests << ','
                << dual.requests << ',' << single.failures << ','
                << dual.failures << ',' << single.rejected_requests << ','
                << dual.rejected_requests << ','
@@ -234,6 +238,7 @@ void WriteComparisonReport(const std::filesystem::path& output_directory,
     }
 
     const Json report = {
+        {"comparison_status", kComparisonStatus},
         {"profile", profile},
         {"scenario", scenario},
         {"targets",

@@ -88,6 +88,9 @@ void TestWritesValidJsonAndCsvComparisonReports() {
         std::ifstream input(json_path);
         const auto report = nlohmann::json::parse(input);
         Check(report.at("profile") == "fixed", "incluye el perfil");
+        Check(report.at("comparison_status") ==
+                  "provisional, solo valida la herramienta",
+              "marca el reporte como provisional");
         Check(report.at("scenario") == "login", "incluye el escenario");
         Check(report.at("targets").at("single").at("users") ==
                   "http://127.0.0.1:8081",
@@ -104,14 +107,17 @@ void TestWritesValidJsonAndCsvComparisonReports() {
         Check(report.at("interpretation").at("rejection_status_codes") ==
                   nlohmann::json({429, 503}),
               "documenta los códigos contados como rechazo");
-                Check(!report.at("capacity_stop").at("stopped").get<bool>(),
+            Check(!report.at("capacity_stop").at("stopped").get<bool>(),
               "indica que no se detuvo por degradación");
 
         std::ifstream csv_input(csv_path);
         const std::string csv((std::istreambuf_iterator<char>(csv_input)),
                               std::istreambuf_iterator<char>());
-        Check(csv.find("vus,single_requests,dual_requests") == 0,
+          Check(csv.find("comparison_status,vus,single_requests,dual_requests") == 0,
               "incluye encabezados CSV");
+        Check(csv.find("\"provisional, solo valida la herramienta\"") !=
+                  std::string::npos,
+              "CSV escribe la etiqueta provisional como campo correctamente escapado");
         Check(csv.find("5,2,2,0,1,0,1") != std::string::npos,
               "incluye resultados pareados en CSV");
     } catch (const std::exception& error) {

@@ -1,0 +1,51 @@
+FROM debian:trixie-slim AS build
+
+ARG MONGO_CXX_DRIVER_VERSION=3.10.2
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates cmake curl git libbson-dev libmongoc-dev \
+    libssl-dev libsasl2-dev ninja-build pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/mongo-cxx-driver
+RUN curl -fsSL \
+      "https://github.com/mongodb/mongo-cxx-driver/releases/download/r${MONGO_CXX_DRIVER_VERSION}/mongo-cxx-driver-r${MONGO_CXX_DRIVER_VERSION}.tar.gz" \
+      -o /tmp/mongo-cxx-driver.tar.gz \
+    && tar -xzf /tmp/mongo-cxx-driver.tar.gz --strip-components=1 \
+    && cmake -S . -B /tmp/mongo-cxx-build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CXX_STANDARD=17 \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DBUILD_VERSION=${MONGO_CXX_DRIVER_VERSION} \
+    && cmake --build /tmp/mongo-cxx-build --parallel 3 \
+    && cmake --install /tmp/mongo-cxx-build \
+    && ldconfig
+
+WORKDIR /src
+COPY tecflix-metadata/services/metadata-service \
+    tecflix-metadata/services/metadata-service
+COPY shared/auth shared/auth
+
+RUN cmake -S tecflix-metadata/services/metadata-service -B /build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DMETADATA_BUILD_TESTS=OFF \
+      -DMETADATA_ENABLE_MONGO=ON \
+      -DTECFLIX_REAL_TELEMETRY=OFF \
+      -DCMAKE_PREFIX_PATH=/usr/local \
+    && cmake --build /build --target metadata-service --parallel 3
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl libbson-1.0-0 libmongoc-1.0-0 libsasl2-2 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local /usr/local
+COPY --from=build /build/metadata-service /usr/local/bin/metadata-service
+RUN ldconfig
+
+ENV PORT=8082
+EXPOSE 8082
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8082/health || exit 1
+ENTRYPOINT ["/usr/local/bin/metadata-service"]

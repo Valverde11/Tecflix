@@ -1,0 +1,40 @@
+FROM debian:trixie-slim AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates cmake git ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY CMakeLists.txt CMakeLists.txt
+COPY include include
+COPY loadtest loadtest
+COPY shared/auth shared/auth
+COPY src src
+COPY third_party/cpp-httplib third_party/cpp-httplib
+
+RUN cmake -S . -B /build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_TESTING=OFF \
+      -DTECFLIX_REAL_TELEMETRY=OFF \
+    && cmake --build /build --target tecflix-api --parallel 3
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl ffmpeg libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/tecflix/streaming
+
+COPY --from=build /build/tecflix-api /usr/local/bin/tecflix-api
+
+ENV TECFLIX_PORT=8083 \
+    TECFLIX_STORAGE=/var/lib/tecflix/streaming \
+    TECFLIX_FFMPEG=/usr/bin/ffmpeg \
+    TECFLIX_ENABLE_QUOTAS=0 \
+    TECFLIX_ENABLE_METADATA_AUTH=0
+
+VOLUME ["/var/lib/tecflix/streaming"]
+EXPOSE 8083
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8083/health || exit 1
+ENTRYPOINT ["/usr/local/bin/tecflix-api"]

@@ -6,7 +6,9 @@ Esta guía describe la implementación C++ de pruebas de carga en `loadtest/`, s
 
 **Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz incluye esos tests dentro del job de Streaming.
 
-**Pendiente:** topologías Nginx/Docker; rechazo de destinos externos específicamente en `smoke`; job/reporte de cobertura específicos de loadtest; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2. La cobertura local supera 90%, pero aún no se aplica en CI.
+**Implementado en Fase 4:** Compose/Dockerfiles y Nginx locales para single y una topología dual parcial. Single ejecuta una instancia de cada API; dual ejecuta dos Metadata con Mongo compartido, pero mantiene una instancia de Users y Streaming. La comparación y sus archivos JSON/CSV llevan la marca **“provisional, solo valida la herramienta”**; no equivale al requisito dual de dos instancias por API.
+
+**Pendiente:** resolver con el equipo la persistencia/coordinación de Users y Streaming antes de afirmar topología dual completa; rechazo de destinos externos específicamente en `smoke`; job/reporte de cobertura específicos de loadtest; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2. La cobertura local supera 90%, pero aún no se aplica en CI.
 
 El PDF V2 pide encontrar límites mediante carga/estrés concurrente y comparar uno contra dos servidores: observar cuándo se afecta el rendimiento y cuándo se rechazan solicitudes. El harness es C++ nativo (no k6); el dashboard puede aportar evidencia complementaria, pero no es requisito para compilar o ejecutar el generador.
 
@@ -102,7 +104,78 @@ La suite CTest incluye `TecflixLoadtestConfig`, `TecflixLoadtestMetrics`, `Tecfl
 
 **Validación local del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** build completo del CMake raíz correcto; CTest completo pasó 10/10. Con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json, se midieron 752/813 líneas ejecutadas (92,50%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 91,19%, `comparison.cpp` 96,36%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,86% y `runner.cpp` 86,84%. El agregado local supera el 90%; CI aún no mide ni aplica ese umbral.
 
-## 6. Mantenimiento con nuevos prompts
+## 6. Topologías locales provisionales
+
+La definición, los riesgos de estado y las alternativas para dual completa están en [OPCIONES_HA_USERS_STREAMING.md](OPCIONES_HA_USERS_STREAMING.md). **No modificar ni borrar datos mientras single y dual estén levantados:** comparten los volúmenes de Users y Streaming sin coordinación entre procesos. En esta comparación solo se permiten `login` y `read-only` contra una cuenta y un video listo, sembrados antes de iniciar la topología dual. No subir, borrar, transcodificar ni cambiar cuotas/metadata.
+
+Puertos publicados solo en loopback:
+
+| Topología | Users | Metadata | Streaming | Mongo |
+|---|---:|---:|---:|---|
+| Single | 8081 | 8082 | 8083 | solo red Docker |
+| Dual provisional | 8181 | 8182 | 8183 | el mismo contenedor iniciado por Compose single |
+
+Las comprobaciones de Compose consultan `/health` activamente. Nginx usa healthchecks pasivos (`max_fails` y `fail_timeout`); no incluye el módulo comercial de health checks activos. Metadata apunta al mismo MongoDB y en dual escala por `METADATA_REPLICAS` (2 por defecto). Users y Streaming quedan con una sola instancia en ambas configuraciones.
+
+Mantén la misma terminal para que los secretos estén disponibles a los dos proyectos. No guardes estos valores en archivos versionados:
+
+```bash
+export AUTH_SECRET="$(openssl rand -hex 32)"
+export SERVICE_SECRET="$(openssl rand -hex 32)"
+```
+
+Desde la raíz, valida configuración y levanta primero single. Usa el flujo autorizado del equipo para crear una cuenta de prueba y un video listo; el mismo Mongo y los volúmenes nombrados se reutilizan al iniciar dual.
+
+```bash
+docker compose -p tecflix-loadtest-single \
+  -f deploy/loadtest/docker-compose.single.yml config -q
+docker compose -p tecflix-loadtest-single \
+  -f deploy/loadtest/docker-compose.single.yml up -d --build
+docker compose -p tecflix-loadtest-single \
+  -f deploy/loadtest/docker-compose.single.yml ps
+
+docker compose -p tecflix-loadtest-dual \
+  -f deploy/loadtest/docker-compose.dual.yml config -q
+METADATA_REPLICAS=2 docker compose -p tecflix-loadtest-dual \
+  -f deploy/loadtest/docker-compose.dual.yml up -d --build
+docker compose -p tecflix-loadtest-dual \
+  -f deploy/loadtest/docker-compose.dual.yml ps
+
+for port in 8081 8082 8083 8181 8182 8183; do
+  curl --fail "http://127.0.0.1:${port}/health"
+done
+```
+
+Ambas topologías usan los mismos Dockerfiles, variables de entorno, volúmenes nombrados y Mongo. La única variación intencional de cantidad de procesos es Metadata: 1 en single y 2 por defecto en dual. Nginx publica single en 8081–8083 y dual en 8181–8183 para que el ejecutable pueda ejecutar ambas configuraciones pareadas.
+
+Ejemplo `smoke` read-only contra las dos entradas locales (sustituye los datos de la cuenta/video por los del fixture ya preparado):
+
+```bash
+export LOADTEST_USERNAME='cuenta-de-prueba'
+export LOADTEST_PASSWORD='contraseña-de-prueba'
+export LOADTEST_VIDEO_ID='0123456789abcdef0123456789abcdef'
+
+build/loadtest/tecflix-loadtest \
+  --single-users-url http://127.0.0.1:8081 \
+  --single-metadata-url http://127.0.0.1:8082 \
+  --single-streaming-url http://127.0.0.1:8083 \
+  --dual-users-url http://127.0.0.1:8181 \
+  --dual-metadata-url http://127.0.0.1:8182 \
+  --dual-streaming-url http://127.0.0.1:8183 \
+  --scenario read-only --profile smoke --stage-seconds 10 \
+  --output load-tests/results
+```
+
+Este resultado y cualquier JSON/CSV generado por el harness se etiqueta **“provisional, solo valida la herramienta”**. No lo presentes como evidencia de rendimiento de una arquitectura V2 dual completa. Detén dual antes de single. `down` conserva los datos; `down -v` elimina fixtures y Mongo:
+
+```bash
+docker compose -p tecflix-loadtest-dual \
+  -f deploy/loadtest/docker-compose.dual.yml down
+docker compose -p tecflix-loadtest-single \
+  -f deploy/loadtest/docker-compose.single.yml down
+```
+
+## 7. Mantenimiento con nuevos prompts
 
 Cuando un prompt agregue una decisión o cambie el alcance:
 

@@ -1,0 +1,99 @@
+# PROVISIONAL: Metadata has two replicas. Users and Streaming remain single.
+# This topology is not equivalent to the V2 requirement of two instances per API.
+services:
+  users:
+    build:
+      context: ../..
+      dockerfile: deploy/loadtest/Dockerfile.users
+    environment:
+      PORT: "8081"
+      DATA_DIR: /var/lib/tecflix/users
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a secret of at least 32 bytes}
+      SERVICE_SECRET: ${SERVICE_SECRET:?Set SERVICE_SECRET to a secret of at least 32 bytes}
+    volumes:
+      - users-data:/var/lib/tecflix/users
+    networks: [dual]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  metadata:
+    build:
+      context: ../..
+      dockerfile: deploy/loadtest/Dockerfile.metadata
+    environment:
+      PORT: "8082"
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a secret of at least 32 bytes}
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: tecflix_metadata
+    networks: [dual]
+    deploy:
+      replicas: ${METADATA_REPLICAS:-2}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8082/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  streaming:
+    build:
+      context: ../..
+      dockerfile: deploy/loadtest/Dockerfile.streaming
+    environment:
+      TECFLIX_PORT: "8083"
+      TECFLIX_STORAGE: /var/lib/tecflix/streaming
+      TECFLIX_FFMPEG: /usr/bin/ffmpeg
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET to a secret of at least 32 bytes}
+      TECFLIX_ENABLE_QUOTAS: "0"
+      TECFLIX_ENABLE_METADATA_AUTH: "0"
+    volumes:
+      - streaming-data:/var/lib/tecflix/streaming
+    networks: [dual]
+    depends_on:
+      users:
+        condition: service_healthy
+      metadata:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8083/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8181:8081"
+      - "127.0.0.1:8182:8082"
+      - "127.0.0.1:8183:8083"
+    networks: [dual]
+    depends_on:
+      users:
+        condition: service_healthy
+      metadata:
+        condition: service_healthy
+      streaming:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  dual:
+    external: true
+    name: tecflix-loadtest-dual
+
+volumes:
+  users-data:
+    external: true
+    name: tecflix-loadtest-users
+  streaming-data:
+    external: true
+    name: tecflix-loadtest-streaming
