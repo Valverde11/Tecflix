@@ -4,11 +4,11 @@ Esta guía describe la implementación C++ de pruebas de carga en `loadtest/`, s
 
 ## 1. Estado actual
 
-**Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz incluye esos tests dentro del job de Streaming. El CLI restringe `smoke` a hosts locales/privados incluso si un host externo aparece en la allowlist; `fixed` y `capacity` conservan la allowlist para entornos autorizados.
+**Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz los ejecuta tanto en el job de Streaming como en el job dedicado de loadtest con cobertura LLVM. El CLI restringe `smoke` a hosts locales/privados incluso si un host externo aparece en la allowlist; `fixed` y `capacity` conservan la allowlist para entornos autorizados.
 
-**Implementado en Fase 4:** Compose/Dockerfiles y Nginx locales para single y una topología dual parcial. Single ejecuta una instancia de cada API; dual ejecuta dos Metadata con Mongo compartido, pero mantiene una instancia de Users y Streaming. La comparación y sus archivos JSON/CSV llevan la marca **“provisional, solo valida la herramienta”**; no equivale al requisito dual de dos instancias por API. Los archivos están versionados; la validación local de Compose, builds de imágenes y healthchecks queda pendiente.
+**Fase 4 validada por el equipo:** Compose/Dockerfiles y Nginx locales para single y una topología dual parcial. Single ejecuta una instancia de cada API; dual ejecuta dos Metadata con Mongo compartido, pero mantiene una instancia de Users y Streaming. La comparación y sus archivos JSON/CSV llevan la marca **“provisional, solo valida la herramienta”**; no equivale al requisito dual de dos instancias por API.
 
-**Pendiente:** la decisión 9 está **bloqueada: requiere decisión de diseño del equipo** antes de duplicar Users o Streaming; validar localmente la configuración/despliegue Docker parcial y la compilación/tests del cambio reciente de restricción por perfil; confirmar la primera ejecución remota del job de cobertura; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2.
+**Pendiente:** la decisión 9 está **bloqueada: requiere decisión de diseño del equipo** antes de duplicar Users o Streaming; confirmar la primera ejecución remota del job de cobertura; ejecutar campañas reales y conservar sus datos. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2.
 
 El PDF V2 pide encontrar límites mediante carga/estrés concurrente y comparar uno contra dos servidores: observar cuándo se afecta el rendimiento y cuándo se rechazan solicitudes. El harness es C++ nativo (no k6); el dashboard puede aportar evidencia complementaria, pero no es requisito para compilar o ejecutar el generador.
 
@@ -102,7 +102,7 @@ Cada ejecución crea un subdirectorio `run-<UTC timestamp>` dentro de `--output`
 
 La suite CTest incluye `TecflixLoadtestConfig`, `TecflixLoadtestMetrics`, `TecflixLoadtestRunner`, `TecflixLoadtestComparison`, `TecflixLoadtestReport` y `TecflixLoadtestCli`: cubre configuración/URLs/perfiles, histogramas y fallos, escenarios HTTP simulados, comparación, reportes JSON/CSV y argumentos. Se añadieron casos focalizados para validaciones del CLI/config, errores de configuración del runner y validación/continuación de niveles de comparación. El workflow raíz tiene un job dedicado que instala `nlohmann-json`, compila loadtest y ejecuta solo esos tests CTest en macOS con cobertura LLVM. `TECFLIX_COVERAGE=ON` requiere Clang e instrumenta el core y sus consumidores con `-fprofile-instr-generate` y `-fcoverage-mapping`; el job combina `.profraw`, exporta JSON con `llvm-cov`, aplica mínimo 90% con `observability/scripts/check_coverage.py` y sube `coverage.json` como artefacto por 7 días. CI no levanta servicios ni ejecuta carga real. La primera ejecución remota del job aún no está validada.
 
-**Validación local del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** build completo del CMake raíz correcto; CTest completo pasó 10/10. Con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json, se midieron 752/813 líneas ejecutadas (92,50%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 91,19%, `comparison.cpp` 96,36%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,86% y `runner.cpp` 86,84%. El agregado local supera el 90%; CI aún no mide ni aplica ese umbral.
+**Validación local histórica del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** build completo del CMake raíz correcto; CTest completo pasó 10/10. Con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json, se midieron 752/813 líneas ejecutadas (92,50%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 91,19%, `comparison.cpp` 96,36%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,86% y `runner.cpp` 86,84%. Esta cifra es local y anterior al job LLVM. El workflow ahora aplica el umbral LLVM de 90%; su primera ejecución remota sigue pendiente.
 
 La validación anterior corresponde al estado previo de la restricción por perfil y no representa el resultado de cobertura LLVM de CI. La primera ejecución del job dedicado debe revisarse en GitHub; no se declara que el umbral haya pasado antes de recibir ese resultado.
 
@@ -177,7 +177,147 @@ docker compose -p tecflix-loadtest-single \
   -f deploy/loadtest/docker-compose.single.yml down
 ```
 
-## 7. Mantenimiento con nuevos prompts
+## 7. Procedimiento de campaña y evidencia
+
+Este procedimiento compara los dos destinos en una misma invocación del harness: ejecuta single y dual secuencialmente con las mismas etapas, alternando el orden en `capacity`. Todos los destinos de los comandos siguientes son loopback. La topología dual local es **“provisional, solo valida la herramienta”**: solo Metadata tiene dos réplicas; Users y Streaming tienen una. No usar estos resultados como evidencia de HA ni de cumplimiento de dos instancias por API. La decisión 9 continúa bloqueando una topología dual completa.
+
+### 7.1 Preparación y registro
+
+Compila el ejecutable antes de iniciar la campaña:
+
+```bash
+cmake -S loadtest -B build/loadtest -DBUILD_TESTING=ON
+cmake --build build/loadtest --parallel
+ctest --test-dir build/loadtest --output-on-failure
+```
+
+Levanta el stack de Grafana/Prometheus si se tomarán capturas:
+
+```bash
+docker compose -f observability/stack/docker-compose.yml up -d
+```
+
+Usa el procedimiento de la sección 6 para validar y levantar Compose single y dual; crea/prepara la cuenta autorizada y el video listo mediante el flujo del equipo antes de iniciar dual. No inventes ni reutilices credenciales de producción. Exporta las credenciales de prueba en la misma terminal, sin escribirlas en archivos:
+
+```bash
+export LOADTEST_USERNAME='cuenta-local-autorizada'
+export LOADTEST_PASSWORD='contraseña-local'
+```
+
+Para los comandos `read-only`, exporta el ID real de un video `ready`, de 32 caracteres hexadecimales minúsculos:
+
+```bash
+export LOADTEST_VIDEO_ID='ID_REAL_DE_32_CARACTERES_HEXADECIMALES'
+```
+
+El texto `ID_REAL_DE_32_CARACTERES_HEXADECIMALES` es un marcador y no es un ID válido: reemplázalo antes de ejecutar. No se imprime ni se registra la contraseña. Mantén JSON, CSV, capturas y notas locales bajo `load-tests/results/`, ruta excluida de Git.
+
+Registra el entorno una vez por campaña, antes de correr perfiles. La salida no incluye variables de credenciales:
+
+```bash
+CAMPAIGN_UTC="$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p load-tests/results/grafana
+{
+  printf 'campaign_utc=%s\n' "$CAMPAIGN_UTC"
+  printf 'commit='
+  git rev-parse HEAD
+  printf 'git_status:\n'
+  git status --short
+  printf 'host:\n'
+  uname -a
+  lscpu
+  free -h
+  printf 'toolchain:\n'
+  g++ --version
+  cmake --version
+  ninja --version
+  docker --version
+  docker compose version
+  printf 'compose_single:\n'
+  docker compose -p tecflix-loadtest-single \
+    -f deploy/loadtest/docker-compose.single.yml ps
+  printf 'compose_dual:\n'
+  docker compose -p tecflix-loadtest-dual \
+    -f deploy/loadtest/docker-compose.dual.yml ps
+} > "load-tests/results/environment-${CAMPAIGN_UTC}.txt" 2>&1
+```
+
+Anota además, sin secretos: referencia de la cuenta/video fixture, `METADATA_REPLICAS=2`, etiquetas e imágenes de servicios, fecha/hora UTC de inicio y fin de cada invocación, escenario, perfil, `max-vus`, duración, cooldown, umbrales, commit y ruta exacta del reporte. El JSON contiene `profile`, `scenario`, destinos, etapas, concurrencia, métricas, `capacity_stop` y `comparison_status`; conserva juntos `comparison.json` y `comparison.csv` de cada directorio `run-*`. No edites los archivos crudos. Si cambias cualquier parámetro, anota el cambio antes de mirar resultados.
+
+Usa una fila por invocación; duplica la plantilla para las seis corridas y no pongas credenciales, tokens ni el ID del video:
+
+| Inicio UTC | Fin UTC | Commit | Host/toolchain | Escenario/perfil | VUs/etapa/cooldown | Umbrales | Fixture (referencia no secreta) | Código salida | Ruta JSON/CSV | Estado/observaciones |
+|---|---|---|---|---|---|---|---|---:|---|---|
+|  |  |  |  |  |  |  |  |  |  |  |
+
+### 7.2 Ejecuciones pareadas
+
+Los números de abajo son los defaults actuales del CLI para que la secuencia sea reproducible, no objetivos de capacidad ni SLO: login usa máximo 10 VUs, `read-only` máximo 20; smoke/fixed usan etapas de 10 s y cooldown 0; capacity usa etapas de 30 s y cooldown 15 s. Para capacity se fijan explícitamente los umbrales acordados: fallos >1% o p95 >2000 ms. Registra cualquier override. El harness completa single y dual en cada etapa antes de decidir parar.
+
+Define dos funciones; ambas apuntan exclusivamente a los puertos locales single (8081–8083) y dual (8181–8183). `run_timed` registra hora UTC y código de salida de cada invocación:
+
+```bash
+set -euo pipefail
+
+run_login() {
+  local profile="$1" max_vus="$2" stage_seconds="$3" cooldown_seconds="$4"
+  build/loadtest/tecflix-loadtest \
+    --single-users-url http://127.0.0.1:8081 \
+    --dual-users-url http://127.0.0.1:8181 \
+    --scenario login --profile "$profile" \
+    --max-vus "$max_vus" --stage-seconds "$stage_seconds" \
+    --cooldown-seconds "$cooldown_seconds" \
+    --max-failure-percent 1 --max-p95-ms 2000 \
+    --output load-tests/results
+}
+
+run_read_only() {
+  local profile="$1" max_vus="$2" stage_seconds="$3" cooldown_seconds="$4"
+  build/loadtest/tecflix-loadtest \
+    --single-users-url http://127.0.0.1:8081 \
+    --single-metadata-url http://127.0.0.1:8082 \
+    --single-streaming-url http://127.0.0.1:8083 \
+    --dual-users-url http://127.0.0.1:8181 \
+    --dual-metadata-url http://127.0.0.1:8182 \
+    --dual-streaming-url http://127.0.0.1:8183 \
+    --scenario read-only --profile "$profile" \
+    --max-vus "$max_vus" --stage-seconds "$stage_seconds" \
+    --cooldown-seconds "$cooldown_seconds" \
+    --max-failure-percent 1 --max-p95-ms 2000 \
+    --output load-tests/results
+}
+
+run_timed() {
+  local label="$1"
+  shift
+  local status=0
+  printf 'RUN_START label=%s utc=%s\n' "$label" "$(date -u +%FT%TZ)"
+  "$@" || status=$?
+  printf 'RUN_END label=%s exit_code=%s utc=%s\n' \
+    "$label" "$status" "$(date -u +%FT%TZ)"
+  return "$status"
+}
+
+run_timed login-smoke run_login smoke 1 10 0
+run_timed login-fixed run_login fixed 10 10 0
+run_timed login-capacity run_login capacity 10 30 15
+
+run_timed read-only-smoke run_read_only smoke 1 10 0
+run_timed read-only-fixed run_read_only fixed 20 10 0
+run_timed read-only-capacity run_read_only capacity 20 30 15
+```
+
+`read-only` necesita una cuenta y un video listo accesibles desde ambas entradas; solo hace el recorrido de lectura definido en la sección 3. No subas, borres ni transcodifiques videos durante esta campaña. `login` ejercita autenticaciones repetidas. La ejecución es local, pero seguirá etiquetada **“provisional, solo valida la herramienta”** en JSON/CSV porque la entrada dual no duplica Users ni Streaming.
+
+### 7.3 Capturas de Grafana
+
+Dashboard: `http://localhost:3000/d/tecflix-system/tecflix-system-overview`. Para cada invocación pareada, selecciona el rango UTC que cubra su inicio y fin, deja anotados los filtros Servicio/Instancia y conserva capturas de estos paneles cuando tengan datos: `Solicitudes por segundo por instancia`, `Latencia p95 por servicio y ruta`, `Tasa de errores 5xx por servicio`, `Solicitudes por código de estado`, `Salud de servicios (/health)` y `Blackbox Exporter`. Guarda imágenes en `load-tests/results/grafana/` con nombres `UTC_COMMIT_ESCENARIO_PERFIL_PANEL.png`, por ejemplo `20261128T120000Z_a1b2c3d_login_capacity_latencia-p95-ruta.png`; sustituye los valores de ejemplo por los reales y anota `sin-datos` cuando el panel no tenga serie.
+
+Limitación de observabilidad de esta topología: el Prometheus actual consulta health solo en 8081–8083 (single), no en los puertos dual 8181–8183. Además, los Dockerfiles de carga compilan las APIs con telemetría real desactivada. Por tanto, el dashboard actual no ofrece una comparación métrica de requests single/dual para estas imágenes. Captura los paneles solo como contexto; anota `sin datos` cuando corresponda, no lo conviertas en cero. La fuente cuantitativa del harness son los JSON/CSV; las métricas de Grafana son correlativas y no demuestran causalidad.
+
+La Fase 6 entrega el protocolo y los comandos, no texto del paper ni resultados. No se ejecutó smoke en este entorno; el equipo debe realizar las campañas autorizadas localmente y conservar las salidas reales.
+
+## 8. Mantenimiento con nuevos prompts
 
 Cuando un prompt agregue una decisión o cambie el alcance:
 
