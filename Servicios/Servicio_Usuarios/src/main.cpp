@@ -35,6 +35,7 @@ int main() {
     std::unique_ptr<IUserRepository> repository;
     std::unique_ptr<QuotaOperationJournal> quota_journal;
     IQuotaStore* quota_store = nullptr;
+    IProfileStore* profile_store = nullptr;
     const char* configured_storage = std::getenv("TECFLIX_USER_STORAGE");
     const std::string storage = configured_storage ? configured_storage : "file";
     if (storage == "file") {
@@ -45,6 +46,7 @@ int main() {
 #ifdef TECFLIX_USERS_POSTGRES
       auto postgres = std::make_unique<PostgresUserRepository>();
       quota_store = postgres.get();
+      profile_store = postgres.get();
       repository = std::move(postgres);
       // Fail early if DB connection is unavailable.
       static_cast<void>(repository->FindById(0));
@@ -55,7 +57,7 @@ int main() {
       throw std::runtime_error("TECFLIX_USER_STORAGE debe ser file o postgres");
     }
     UserService users(*repository, PasswordHasher{}, UserService::SystemClock,
-                      quota_journal.get(), quota_store);
+                      quota_journal.get(), quota_store, profile_store);
     const AuthService auth(config.AuthSecret());
     const ServiceTokenVerifier service_tokens(config.ServiceSecret());
     UserController controller(users, auth, service_tokens);

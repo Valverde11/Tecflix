@@ -86,10 +86,12 @@ std::int64_t UserService::SystemClock() {
 }
 
 UserService::UserService(IUserRepository& repository, PasswordHasher hasher,
-                         Clock clock, QuotaOperationJournal* journal, IQuotaStore* quota_store)
+                         Clock clock, QuotaOperationJournal* journal, IQuotaStore* quota_store,
+                         IProfileStore* profile_store)
     : repository_(repository),
       journal_(journal),
       quota_store_(quota_store),
+      profile_store_(profile_store),
       hasher_(std::move(hasher)),
       clock_(std::move(clock)) {
   // La recuperación termina antes de admitir tráfico HTTP.
@@ -163,6 +165,22 @@ UserProfile UserService::Update(std::uint64_t id, const ProfileChanges& changes)
   std::optional<PasswordHasher::Credentials> credentials;
   if (changes.password) {
     credentials = hasher_.Create(*changes.password);
+  }
+
+  if (profile_store_) {
+    ProfilePatch patch;
+    patch.username = changes.username;
+    patch.email = changes.email;
+    if (credentials) {
+      patch.password_hash = credentials->hash;
+      patch.salt = credentials->salt;
+    }
+    const ProfilePatchResult result = profile_store_->ApplyProfilePatch(id, patch);
+    RequireSuccess(result.status);
+    if (!result.user) {
+      throw std::logic_error("El repositorio no devolvio el perfil actualizado");
+    }
+    return ToProfile(*result.user);
   }
 
   const std::lock_guard lock(repository_mutex_);

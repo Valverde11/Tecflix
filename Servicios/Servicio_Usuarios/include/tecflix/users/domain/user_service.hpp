@@ -9,6 +9,7 @@
 #include "tecflix/users/security/password_hasher.hpp"
 #include "tecflix/users/quota_operation_journal.hpp"
 #include "tecflix/users/storage/i_user_repository.hpp"
+#include "tecflix/users/storage/i_profile_store.hpp"
 #include "tecflix/users/storage/i_quota_store.hpp"
 namespace tecflix::users {
 
@@ -62,7 +63,8 @@ class UserService {
   // repository debe vivir más que este servicio.
   UserService(IUserRepository& repository, PasswordHasher hasher,
               Clock clock = SystemClock, QuotaOperationJournal* journal = nullptr,
-               IQuotaStore* quota_store = nullptr);
+               IQuotaStore* quota_store = nullptr,
+               IProfileStore* profile_store = nullptr);
 
   UserProfile Register(const Registration& registration);
   // Verifica las credenciales y devuelve el usuario. Todo fallo lanza el mismo
@@ -99,6 +101,7 @@ class UserService {
   IUserRepository& repository_;
   QuotaOperationJournal* journal_;
   IQuotaStore* quota_store_;
+  IProfileStore* profile_store_;
   std::mutex repository_mutex_;
   PasswordHasher hasher_;
   Clock clock_;

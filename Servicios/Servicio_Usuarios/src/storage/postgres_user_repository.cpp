@@ -165,6 +165,57 @@ WriteStatus PostgresUserRepository::Update(const UserRecord& record) {
   }
 }
 
+ProfilePatchResult PostgresUserRepository::ApplyProfilePatch(
+    std::uint64_t id, const ProfilePatch& patch) {
+  if (patch.username && patch.username->size() > UserRecord::kUsernameSize) {
+    throw std::invalid_argument("Nombre de usuario demasiado largo");
+  }
+  if (patch.email && patch.email->size() > UserRecord::kEmailSize) {
+    throw std::invalid_argument("Correo electronico demasiado largo");
+  }
+  if (patch.password_hash.has_value() != patch.salt.has_value()) {
+    throw std::invalid_argument("Hash y salt deben actualizarse juntos");
+  }
+
+  const bool set_username = patch.username.has_value();
+  const bool set_email = patch.email.has_value();
+  const bool set_password = patch.password_hash.has_value();
+  const std::string username = patch.username.value_or("");
+  const std::string email = patch.email.value_or("");
+  const std::string hash_hex = set_password
+      ? Hex(*patch.password_hash) : std::string(64, '0');
+  const std::string salt_hex = set_password
+      ? Hex(*patch.salt) : std::string(32, '0');
+
+  pqxx::connection connection;
+  pqxx::work tx(connection);
+  try {
+    // A single UPDATE changes only supplied fields. Distinct concurrent field
+    // updates never rewrite stale values of other fields or quota counters.
+    const auto result = tx.exec(
+        "UPDATE users SET "
+        "username=CASE WHEN $2::boolean THEN $3 ELSE username END, "
+        "username_key=CASE WHEN $2::boolean THEN $4 ELSE username_key END, "
+        "email=CASE WHEN $5::boolean THEN $6 ELSE email END, "
+        "email_key=CASE WHEN $5::boolean THEN $7 ELSE email_key END, "
+        "password_hash=CASE WHEN $8::boolean THEN decode($9,'hex') ELSE password_hash END, "
+        "salt=CASE WHEN $8::boolean THEN decode($10,'hex') ELSE salt END "
+        "WHERE id=$1 AND deleted=false RETURNING " + std::string(kColumns),
+        pqxx::params{SqlId(id), set_username, username, LowerAscii(username),
+                     set_email, email, LowerAscii(email),
+                     set_password, hash_hex, salt_hex});
+    if (result.empty()) {
+      tx.commit();
+      return {WriteStatus::kNotFound, std::nullopt};
+    }
+    const auto updated = ReadRecord(result[0]);
+    tx.commit();
+    return {WriteStatus::kSuccess, updated};
+  } catch (const pqxx::unique_violation& error) {
+    return {UniqueStatus(error), std::nullopt};
+  }
+}
+
 bool PostgresUserRepository::Remove(std::uint64_t id) {
   pqxx::connection connection;
   pqxx::work tx(connection);
