@@ -78,6 +78,51 @@ void TestRejectsUnsupportedTargetUrls() {
         "LOADTEST_ALLOWED_HOSTS", "rechaza host externo no autorizado");
 }
 
+void TestTargetAllowlistDependsOnProfile() {
+    auto arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--profile", "smoke"});
+    const auto local = ParseCommandLine(arguments, CompleteEnvironment());
+    Check(local.profile == tecflix::loadtest::Profile::smoke,
+          "smoke acepta destinos locales");
+    ReplaceOption(arguments, "--single-users-url", "http://10.12.0.4:8081");
+    const auto private_target =
+        ParseCommandLine(arguments, CompleteEnvironment());
+    Check(private_target.single_users_url == "http://10.12.0.4:8081",
+          "smoke acepta destinos privados");
+
+    auto environment = CompleteEnvironment();
+    environment["LOADTEST_ALLOWED_HOSTS"] = "api.example.com";
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--profile", "smoke"});
+    ReplaceOption(arguments, "--single-users-url", "http://api.example.com");
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, environment); },
+        "smoke solo admite destinos locales o privados",
+        "smoke rechaza host externo aunque esté autorizado");
+
+    environment.erase("LOADTEST_ALLOWED_HOSTS");
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, environment); },
+        "smoke solo admite destinos locales o privados",
+        "smoke rechaza host externo no autorizado");
+
+    for (const auto* profile : {"fixed", "capacity"}) {
+        arguments = ReadOnlyArguments();
+        arguments.insert(arguments.end(), {"--profile", profile});
+        ReplaceOption(arguments, "--single-users-url", "http://api.example.com");
+        environment = CompleteEnvironment();
+        environment["LOADTEST_ALLOWED_HOSTS"] = "api.example.com";
+        const auto authorized = ParseCommandLine(arguments, environment);
+        Check(authorized.profile ==
+                  (std::string(profile) == "fixed"
+                       ? tecflix::loadtest::Profile::fixed
+                       : tecflix::loadtest::Profile::capacity),
+              "interpreta el perfil que admite hosts autorizados");
+        Check(authorized.single_users_url == "http://api.example.com",
+              "fixed y capacity aceptan el mismo host de la allowlist");
+    }
+}
+
 void TestRejectsMetadataUrlForLoginScenario() {
     auto arguments = ReadOnlyArguments();
     arguments.insert(arguments.end(),
@@ -153,6 +198,12 @@ void TestHelpDoesNotRequireArgumentsOrEnvironment() {
     Check(std::string(tecflix::loadtest::CommandLineUsage()).find(
               "tecflix-loadtest") != std::string::npos,
           "expone la ayuda del CLI");
+    Check(std::string(tecflix::loadtest::CommandLineUsage()).find(
+              "smoke solo admite hosts locales/privados") != std::string::npos,
+          "la ayuda explica la restricción de smoke");
+    Check(std::string(tecflix::loadtest::CommandLineUsage()).find(
+              "LOADTEST_ALLOWED_HOSTS") != std::string::npos,
+          "la ayuda explica la allowlist para otros perfiles");
 }
 
 void TestCapacityDefaultsAndAllowedHostList() {
@@ -263,6 +314,7 @@ void TestRejectsInvalidNumericOptionsAndEmptyCredentials() {
 
 int main() {
     TestRejectsUnsupportedTargetUrls();
+    TestTargetAllowlistDependsOnProfile();
     TestRejectsMetadataUrlForLoginScenario();
     TestRejectsInvalidCooldown();
     TestRejectsUnknownOptionAndMissingValue();
