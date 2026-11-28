@@ -4,11 +4,11 @@ Esta guía describe la implementación C++ de pruebas de carga en `loadtest/`, s
 
 ## 1. Estado actual
 
-**Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz incluye esos tests dentro del job de Streaming.
+**Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz incluye esos tests dentro del job de Streaming. El CLI restringe `smoke` a hosts locales/privados incluso si un host externo aparece en la allowlist; `fixed` y `capacity` conservan la allowlist para entornos autorizados.
 
 **Implementado en Fase 4:** Compose/Dockerfiles y Nginx locales para single y una topología dual parcial. Single ejecuta una instancia de cada API; dual ejecuta dos Metadata con Mongo compartido, pero mantiene una instancia de Users y Streaming. La comparación y sus archivos JSON/CSV llevan la marca **“provisional, solo valida la herramienta”**; no equivale al requisito dual de dos instancias por API.
 
-**Pendiente:** resolver con el equipo la persistencia/coordinación de Users y Streaming antes de afirmar topología dual completa; rechazo de destinos externos específicamente en `smoke`; job/reporte de cobertura específicos de loadtest; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2. La cobertura local supera 90%, pero aún no se aplica en CI.
+**Pendiente:** resolver con el equipo la persistencia/coordinación de Users y Streaming antes de afirmar topología dual completa; validar localmente la compilación y los tests del cambio reciente de restricción por perfil; job/reporte de cobertura específicos de loadtest; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2. La cobertura local supera 90%, pero aún no se aplica en CI.
 
 El PDF V2 pide encontrar límites mediante carga/estrés concurrente y comparar uno contra dos servidores: observar cuándo se afecta el rendimiento y cuándo se rechazan solicitudes. El harness es C++ nativo (no k6); el dashboard puede aportar evidencia complementaria, pero no es requisito para compilar o ejecutar el generador.
 
@@ -35,7 +35,7 @@ Los fallos incluyen errores de red, respuestas no 2xx y respuestas exitosas con 
 ## 4. Seguridad y repetibilidad
 
 - Ejecutar únicamente contra servicios propios/locales o un entorno de prueba autorizado. Los hosts privados o locales se aceptan por defecto; un hostname externo debe figurar exactamente en `LOADTEST_ALLOWED_HOSTS`.
-- **Restricción especificada, pendiente en código:** el parser aplica la allowlist igual en todos los perfiles, por lo que actualmente puede aceptar un host externo incluido en ella incluso para `smoke`. No ejecutar `smoke` contra hosts externos, aunque estén autorizados o en allowlist; las corridas `smoke` son solo locales/privadas.
+- **Restricción implementada en CLI; validación local pendiente:** `smoke` solo acepta hosts locales/privados y rechaza hosts externos aunque estén en `LOADTEST_ALLOWED_HOSTS`. `fixed` y `capacity` sí admiten hosts externos incluidos exactamente en esa allowlist, con autorización explícita del entorno.
 - No se permite HTTPS en esta versión del parser de destino; las URL con credenciales, rutas, queries o fragmentos se rechazan.
 - `read-only` no modifica registros; requiere credenciales de una cuenta existente y video existente listo en ambas topologías. El escenario `login` sí genera operaciones de autenticación.
 - No guardar credenciales, tokens ni reportes voluminosos en Git. La ruta recomendada para resultados es `load-tests/results/`.
@@ -96,13 +96,15 @@ build/loadtest/tecflix-loadtest \
   --output load-tests/results
 ```
 
-Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds`, `--cooldown-seconds`, `--max-failure-percent` y `--max-p95-ms` a la capacidad segura del entorno. Las corridas `smoke` deben ser solo locales/privadas. El parser aún acepta hosts externos autorizados en allowlist incluso para smoke; no usar esa combinación. Para otros perfiles, los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
+Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds`, `--cooldown-seconds`, `--max-failure-percent` y `--max-p95-ms` a la capacidad segura del entorno. Las corridas `smoke` son solo locales/privadas; el parser rechaza hosts externos incluso si están en la allowlist. Para `fixed` y `capacity`, los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
 
 Cada ejecución crea un subdirectorio `run-<UTC timestamp>` dentro de `--output` con `comparison.json` y `comparison.csv`. JSON contiene configuración, métricas por etapa/ruta, diferencias entre topologías y primer nivel con fallos. CSV permite comparar solicitudes, errores, rechazos, throughput, p50/p95 y cambios porcentuales.
 
 La suite CTest incluye `TecflixLoadtestConfig`, `TecflixLoadtestMetrics`, `TecflixLoadtestRunner`, `TecflixLoadtestComparison`, `TecflixLoadtestReport` y `TecflixLoadtestCli`: cubre configuración/URLs/perfiles, histogramas y fallos, escenarios HTTP simulados, comparación, reportes JSON/CSV y argumentos. Se añadieron casos focalizados para validaciones del CLI/config, errores de configuración del runner y validación/continuación de niveles de comparación. El workflow raíz compila el proyecto y ejecuta CTest dentro del job de Streaming; todavía no hay job específico ni aplicación de cobertura para loadtest. Las pruebas verifican el harness, no son una campaña de desempeño sobre APIs desplegadas.
 
 **Validación local del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** build completo del CMake raíz correcto; CTest completo pasó 10/10. Con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json, se midieron 752/813 líneas ejecutadas (92,50%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 91,19%, `comparison.cpp` 96,36%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,86% y `runner.cpp` 86,84%. El agregado local supera el 90%; CI aún no mide ni aplica ese umbral.
+
+La validación anterior corresponde al estado previo de la restricción por perfil. La implementación actual y sus casos CLI están pendientes de compilación y CTest por el responsable del entorno; no se atribuyen resultados a ese cambio hasta recibir esa salida.
 
 ## 6. Topologías locales provisionales
 
