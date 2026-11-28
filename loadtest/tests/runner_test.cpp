@@ -297,7 +297,7 @@ void TestCapacityComparisonStopsAtFirstPairedFailure() {
         {1, std::chrono::seconds(1)},
         {2, std::chrono::seconds(1)},
     };
-    comparison.stop_after_first_failure = true;
+    comparison.stop_on_degradation = true;
 
     const auto results = tecflix::loadtest::ComparisonRunner().Run(comparison);
     Check(results.size() == 1,

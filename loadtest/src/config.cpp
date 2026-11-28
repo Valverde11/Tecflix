@@ -9,8 +9,8 @@
 namespace tecflix::loadtest {
 namespace {
 
-constexpr std::uint32_t kMaxVirtualUsers = 50;
-constexpr std::uint32_t kMaxLoginVirtualUsers = 10;
+constexpr std::uint32_t kMaxVirtualUsers = 200;
+constexpr std::uint32_t kMaxLoginVirtualUsers = 50;
 constexpr std::int64_t kMaxStageSeconds = 300;
 
 std::string Lowercase(std::string value) {
@@ -187,7 +187,7 @@ std::vector<Stage> BuildStages(const RunSettings& settings) {
         return {{settings.max_virtual_users, settings.stage_duration}};
     }
 
-    std::vector<std::uint32_t> levels{1, 5, 10, 20, 30, 40,
+    std::vector<std::uint32_t> levels{1, 5, 10, 20, 40, 80, 120, 160, 200,
                                      settings.max_virtual_users};
     const auto max_vus = MaxVirtualUsers(settings.scenario);
     for (auto& level : levels) level = std::min(level, settings.max_virtual_users);

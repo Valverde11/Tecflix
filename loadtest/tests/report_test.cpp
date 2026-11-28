@@ -104,6 +104,8 @@ void TestWritesValidJsonAndCsvComparisonReports() {
         Check(report.at("interpretation").at("rejection_status_codes") ==
                   nlohmann::json({429, 503}),
               "documenta los códigos contados como rechazo");
+                Check(!report.at("capacity_stop").at("stopped").get<bool>(),
+              "indica que no se detuvo por degradación");
 
         std::ifstream csv_input(csv_path);
         const std::string csv((std::istreambuf_iterator<char>(csv_input)),
@@ -147,12 +149,48 @@ void TestRejectsUnwritableReportDirectory() {
     Check(!error, "limpia el directorio temporal de error");
 }
 
+void TestReportsCapacityStopStageAndCriteria() {
+    const auto directory = UniqueTempPath("tecflix-loadtest-capacity-stop");
+    PairedStageResult pair;
+    pair.virtual_users = 40;
+    pair.max_failure_percent = 1.0;
+    pair.max_p95_ms = 2000.0;
+    pair.single = MakeStage(200, 1.0);
+    pair.dual = MakeStage(200, 1.0);
+    pair.degradation_criteria.push_back(
+        {"dual", "p95_ms", 2048.0, 2000.0});
+
+    WorkloadConfig config;
+    config.users = ParseTarget("http://127.0.0.1:8081");
+    WriteComparisonReport(directory, "capacity", "login", config, config,
+                          {pair});
+    const auto report = nlohmann::json::parse(
+        std::ifstream(directory / "comparison.json"));
+    const auto& stop = report.at("capacity_stop");
+    Check(stop.at("stopped") == true, "marca capacity como detenida");
+    Check(stop.at("stage_index") == 1, "registra el índice de etapa de parada");
+    Check(stop.at("virtual_users") == 40, "registra VUs de la etapa de parada");
+    Check(stop.at("max_failure_percent") == 1.0 &&
+              stop.at("max_p95_ms") == 2000.0,
+          "registra los dos umbrales configurados");
+    Check(stop.at("criteria").at(0).at("topology") == "dual" &&
+              stop.at("criteria").at(0).at("metric") == "p95_ms" &&
+              stop.at("criteria").at(0).at("observed_value") == 2048.0 &&
+              stop.at("criteria").at(0).at("threshold") == 2000.0,
+          "registra topología, criterio, valor y umbral que detuvieron la carga");
+
+    std::error_code error;
+    std::filesystem::remove_all(directory, error);
+    Check(!error, "limpia directorio temporal de parada capacity");
+}
+
 }  // namespace
 
 int main() {
     TestSummarizeAggregatesRequestsErrorsLatencyAndRejections();
     TestWritesValidJsonAndCsvComparisonReports();
     TestRejectsUnwritableReportDirectory();
+    TestReportsCapacityStopStageAndCriteria();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;

@@ -135,6 +135,34 @@ std::string PercentChange(double baseline, double comparison) {
     return CsvNumber((comparison - baseline) * 100.0 / baseline);
 }
 
+Json CapacityStop(const std::vector<PairedStageResult>& results) {
+    Json criteria = Json::array();
+    for (std::size_t index = 0; index < results.size(); ++index) {
+        const auto& pair = results[index];
+        if (pair.degradation_criteria.empty()) continue;
+        for (const auto& criterion : pair.degradation_criteria) {
+            criteria.push_back({
+                {"topology", criterion.topology},
+                {"metric", criterion.metric},
+                {"observed_value", criterion.observed_value},
+                {"threshold", criterion.threshold},
+            });
+        }
+        return {
+            {"stopped", true},
+            {"stage_index", index + 1},
+            {"virtual_users", pair.virtual_users},
+            {"max_failure_percent", pair.max_failure_percent},
+            {"max_p95_ms", pair.max_p95_ms},
+            {"criteria", std::move(criteria)},
+        };
+    }
+        return {{"stopped", false},
+            {"max_failure_percent", results.front().max_failure_percent},
+            {"max_p95_ms", results.front().max_p95_ms},
+            {"criteria", std::move(criteria)}};
+}
+
 }  // namespace
 
 TopologySummary Summarize(const StageResult& stage) {
@@ -218,6 +246,7 @@ void WriteComparisonReport(const std::filesystem::path& output_directory,
             {"metadata", dual.metadata ? dual.metadata->url : ""},
             {"streaming", dual.streaming ? dual.streaming->url : ""}}}}},
         {"stages", std::move(stages)},
+        {"capacity_stop", CapacityStop(results)},
         {"first_observed_failure",
          {{"single", FirstFailure(results, false)},
           {"dual", FirstFailure(results, true)}}},
@@ -226,9 +255,11 @@ void WriteComparisonReport(const std::filesystem::path& output_directory,
           {"note",
            "first_observed_failure marca el primer nivel con respuestas no 2xx "
            "(incluye errores de red). En perfil capacity, la ejecución deja de "
-           "subir concurrencia tras completar el par single/dual del primer nivel "
-           "con fallos. rejected_429_503 identifica rechazos 429/503. Los cambios "
-           "de p95 y throughput son observaciones, no umbrales aprobados."}}},
+           "subir concurrencia tras completar el par single/dual de una etapa "
+           "que supera max_failure_percent o max_p95_ms en cualquiera de las "
+           "topologías. capacity_stop registra nivel y criterios. "
+           "rejected_429_503 identifica rechazos 429/503. Los percentiles son "
+           "estimaciones por buckets."}}},
     };
 
     WriteFile(json_path, report.dump(2) + "\n");

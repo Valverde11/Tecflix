@@ -129,8 +129,10 @@ int main(int argc, char** argv) {
             arguments.dual_metadata_url, arguments.dual_streaming_url,
             arguments, arguments.allowed_hosts, arguments.scenario);
         comparison.cooldown = arguments.cooldown;
-        comparison.stop_after_first_failure =
+        comparison.stop_on_degradation =
             arguments.profile == Profile::capacity;
+        comparison.max_failure_percent = arguments.max_failure_percent;
+        comparison.max_p95_ms = arguments.max_p95_ms;
 
         RunSettings settings;
         settings.profile = arguments.profile;

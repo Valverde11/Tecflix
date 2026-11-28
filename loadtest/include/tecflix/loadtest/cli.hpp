@@ -24,6 +24,8 @@ struct CommandLineArguments {
     std::uint32_t max_virtual_users = 20;
     std::chrono::seconds stage_duration{10};
     std::chrono::seconds cooldown{0};
+    double max_failure_percent = 1.0;
+    double max_p95_ms = 2000.0;
     std::string username;
     std::string password;
     std::string video_id;

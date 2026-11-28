@@ -65,29 +65,29 @@ void TestRejectsUnsafeOrMalformedUrls() {
                 "rechaza IPv6 sin corchetes");
     CheckThrows([] { ParseTarget("http://fdomain.example"); },
                 "no interpreta prefijo de hostname como IPv6 privado");
-        CheckThrows([] { ParseTarget("http://[::1"); },
+    CheckThrows([] { ParseTarget("http://[::1"); },
                 "rechaza IPv6 sin corchete de cierre");
-        CheckThrows([] { ParseTarget("http://[::1]suffix"); },
+    CheckThrows([] { ParseTarget("http://[::1]suffix"); },
                 "rechaza sufijo inválido después de IPv6");
-        CheckThrows([] { ParseTarget("http://localhost:"); },
+    CheckThrows([] { ParseTarget("http://localhost:"); },
                 "rechaza puerto vacío");
-        CheckThrows([] { ParseTarget("http://bad_host.local"); },
+    CheckThrows([] { ParseTarget("http://bad_host.local"); },
                 "rechaza caracteres inválidos en host");
-    }
+}
 
-    void TestRecognizesLocalHostSuffixesAndPrivateIpv6() {
-        using tecflix::loadtest::ParseTarget;
-        Check(ParseTarget("http://host.docker.internal").host ==
+void TestRecognizesLocalHostSuffixesAndPrivateIpv6() {
+    using tecflix::loadtest::ParseTarget;
+    Check(ParseTarget("http://host.docker.internal").host ==
               "host.docker.internal",
-            "acepta host reservado de Docker");
-        Check(ParseTarget("http://api.local").host == "api.local",
-            "acepta dominio local");
-        Check(ParseTarget("http://api.test").host == "api.test",
-            "acepta dominio de pruebas");
-        Check(ParseTarget("http://[fc00::1]").host == "fc00::1",
-            "acepta rango ULA IPv6 fc");
-        Check(ParseTarget("http://[fd00::1]").host == "fd00::1",
-            "acepta rango ULA IPv6 fd");
+          "acepta host reservado de Docker");
+    Check(ParseTarget("http://api.local").host == "api.local",
+          "acepta dominio local");
+    Check(ParseTarget("http://api.test").host == "api.test",
+          "acepta dominio de pruebas");
+    Check(ParseTarget("http://[fc00::1]").host == "fc00::1",
+          "acepta rango ULA IPv6 fc");
+    Check(ParseTarget("http://[fd00::1]").host == "fd00::1",
+          "acepta rango ULA IPv6 fd");
 }
 
 void TestProfilesAndBoundaries() {
@@ -101,13 +101,36 @@ void TestProfilesAndBoundaries() {
     Check(stages[0].virtual_users == 1 && stages[3].virtual_users == 20,
           "capacidad comienza en uno y alcanza el máximo configurado");
 
-    settings.profile = Profile::fixed;
-    settings.max_virtual_users = 51;
-    CheckThrows([&] { BuildStages(settings); }, "limita concurrencia a 50 VUs");
+    settings.max_virtual_users = 200;
+    const auto read_only_capacity = BuildStages(settings);
+    const std::vector<std::uint32_t> expected_read_only_levels = {
+        1, 5, 10, 20, 40, 80, 120, 160, 200};
+    Check(read_only_capacity.size() == expected_read_only_levels.size(),
+          "capacity genera niveles read-only hasta 200 VUs");
+    for (std::size_t index = 0;
+         index < read_only_capacity.size() &&
+         index < expected_read_only_levels.size();
+         ++index) {
+        Check(read_only_capacity[index].virtual_users ==
+                  expected_read_only_levels[index],
+              "capacity respeta los niveles progresivos acordados");
+    }
 
     settings.scenario = Scenario::login;
-    settings.max_virtual_users = 11;
-    CheckThrows([&] { BuildStages(settings); }, "limita login a 10 VUs");
+    settings.max_virtual_users = 50;
+    const auto login_capacity = BuildStages(settings);
+    Check(login_capacity.size() == 6 &&
+              login_capacity.back().virtual_users == 50,
+          "capacity limita login a 50 VUs");
+
+    settings.profile = Profile::fixed;
+    settings.scenario = Scenario::read_only_journey;
+    settings.max_virtual_users = 201;
+    CheckThrows([&] { BuildStages(settings); }, "limita concurrencia a 200 VUs");
+
+    settings.scenario = Scenario::login;
+    settings.max_virtual_users = 51;
+    CheckThrows([&] { BuildStages(settings); }, "limita login a 50 VUs");
 
     settings.max_virtual_users = 10;
     settings.stage_duration = std::chrono::seconds(301);

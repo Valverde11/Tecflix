@@ -1,5 +1,6 @@
 #include "tecflix/loadtest/cli.hpp"
 
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -16,6 +17,7 @@ constexpr const char* kUsage =
     "                    [--dual-metadata-url URL --dual-streaming-url URL]\n"
     "                    [--profile smoke|fixed|capacity] [--scenario read-only|login]\n"
     "                    [--max-vus N] [--stage-seconds N] [--cooldown-seconds N]\n"
+    "                    [--max-failure-percent N] [--max-p95-ms N]\n"
     "\n"
     "Credenciales (solo por entorno): LOADTEST_USERNAME y LOADTEST_PASSWORD.\n"
     "El escenario read-only también requiere LOADTEST_VIDEO_ID (video listo).\n"
@@ -70,6 +72,21 @@ std::uint32_t ParsePositiveInteger(const std::string& value,
         throw std::invalid_argument(option + " requiere un entero positivo válido");
     }
     return static_cast<std::uint32_t>(number);
+}
+
+double ParseNonNegativeFinite(const std::string& value,
+                              const std::string& option) {
+    std::size_t parsed = 0;
+    double number = 0.0;
+    try {
+        number = std::stod(value, &parsed);
+    } catch (const std::exception&) {
+        throw std::invalid_argument(option + " requiere un número válido no negativo");
+    }
+    if (parsed != value.size() || !std::isfinite(number) || number < 0.0) {
+        throw std::invalid_argument(option + " requiere un número válido no negativo");
+    }
+    return number;
 }
 
 std::string NextValue(const std::vector<std::string>& arguments,
@@ -155,6 +172,16 @@ CommandLineArguments ParseCommandLine(
             }
             parsed.cooldown = std::chrono::seconds(number);
             parsed.cooldown_set = true;
+        } else if (option == "--max-failure-percent") {
+            parsed.max_failure_percent = ParseNonNegativeFinite(
+                NextValue(arguments, index, option), option);
+            if (parsed.max_failure_percent > 100.0) {
+                throw std::invalid_argument(
+                    "--max-failure-percent debe estar entre 0 y 100");
+            }
+        } else if (option == "--max-p95-ms") {
+            parsed.max_p95_ms = ParseNonNegativeFinite(
+                NextValue(arguments, index, option), option);
         } else {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
