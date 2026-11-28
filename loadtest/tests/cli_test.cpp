@@ -72,6 +72,7 @@ void TestRejectsUnsupportedTargetUrls() {
         "HTTP sin TLS", "rechaza URL que no usa HTTP");
 
     arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--profile", "fixed"});
     ReplaceOption(arguments, "--single-users-url", "http://api.example.com");
     CheckThrowsContaining(
         [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
