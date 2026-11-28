@@ -147,6 +147,88 @@ void TestLoginDoesNotRequireVideoId() {
           "interpreta escenario login");
 }
 
+void TestHelpDoesNotRequireArgumentsOrEnvironment() {
+    const auto parsed = ParseCommandLine({"--help"}, {});
+    Check(parsed.show_help, "reconoce --help sin opciones requeridas");
+    Check(std::string(tecflix::loadtest::CommandLineUsage()).find(
+              "tecflix-loadtest") != std::string::npos,
+          "expone la ayuda del CLI");
+}
+
+void TestCapacityDefaultsAndAllowedHostList() {
+    auto arguments = ReadOnlyArguments();
+    for (const auto* option : {"--single-users-url", "--single-metadata-url",
+                               "--single-streaming-url", "--dual-users-url",
+                               "--dual-metadata-url", "--dual-streaming-url"}) {
+        ReplaceOption(arguments, option, "http://api.example.com");
+    }
+    arguments.insert(arguments.end(), {"--profile", "capacity"});
+
+    auto environment = CompleteEnvironment();
+    environment["LOADTEST_ALLOWED_HOSTS"] =
+        "other.example.com, API.EXAMPLE.COM, ,";
+    const auto parsed = ParseCommandLine(arguments, environment);
+
+    Check(parsed.profile == tecflix::loadtest::Profile::capacity,
+          "interpreta el perfil capacity");
+    Check(parsed.stage_duration == std::chrono::seconds(30),
+          "usa duración predeterminada de capacity");
+    Check(parsed.cooldown == std::chrono::seconds(15),
+          "usa cooldown predeterminado de capacity");
+    Check(parsed.max_virtual_users == 20,
+          "conserva el máximo predeterminado read-only");
+    Check(parsed.allowed_hosts.size() == 2,
+          "separa allowlist y omite elementos vacíos");
+    Check(parsed.single_users_url == "http://api.example.com",
+          "acepta hostname externo autorizado exactamente");
+}
+
+void TestRejectsInvalidProfilesScenariosAndMissingTargets() {
+    auto arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--profile", "unknown"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "--profile debe ser", "rechaza perfiles desconocidos");
+
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--scenario", "upload"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "--scenario debe ser", "rechaza escenarios desconocidos");
+
+    arguments = ReadOnlyArguments();
+    arguments.erase(arguments.begin(), arguments.begin() + 2);
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "Se requieren --single-users-url", "requiere los destinos obligatorios");
+
+    arguments = ReadOnlyArguments();
+    arguments.erase(arguments.begin() + 2, arguments.begin() + 4);
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "read-only requiere URLs", "read-only requiere todas las URLs de APIs");
+}
+
+void TestRejectsInvalidNumericOptionsAndEmptyCredentials() {
+    auto arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--max-vus", "0"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "entero positivo", "rechaza máximo de VUs cero");
+
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--cooldown-seconds", "abc"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "entre 0 y 300", "rechaza cooldown no numérico");
+
+    auto environment = CompleteEnvironment();
+    environment["LOADTEST_USERNAME"] = "";
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(ReadOnlyArguments(), environment); },
+        "LOADTEST_USERNAME", "rechaza variable username vacía");
+}
+
 }  // namespace
 
 int main() {
@@ -156,6 +238,10 @@ int main() {
     TestRejectsUnknownOptionAndMissingValue();
     TestRequiresScenarioEnvironmentVariables();
     TestLoginDoesNotRequireVideoId();
+    TestHelpDoesNotRequireArgumentsOrEnvironment();
+    TestCapacityDefaultsAndAllowedHostList();
+    TestRejectsInvalidProfilesScenariosAndMissingTargets();
+    TestRejectsInvalidNumericOptionsAndEmptyCredentials();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;
