@@ -6,7 +6,7 @@ Esta guía describe la implementación C++ de pruebas de carga en `loadtest/`, s
 
 **Implementado:** CLI C++17 `tecflix-loadtest`, escenarios `login` y `read-only`, perfiles `smoke`, `fixed` y `capacity`, medición por ruta y reportes JSON/CSV. El runner compara dos conjuntos de URLs proporcionadas como `single` y `dual`. Hay seis tests CTest para configuración, métricas, runner, comparación, reportes y argumentos del CLI. El workflow raíz incluye esos tests dentro del job de Streaming.
 
-**Pendiente:** topologías Nginx/Docker; topes acordados de 200/50 VUs; umbrales de degradación configurables 1%/2000 ms; rechazo de destinos externos específicamente en `smoke`; y job/reporte de cobertura específicos de loadtest. Los límites actuales siguen en 50 VUs para `read-only` y 10 para `login`; `capacity` completa el par `single`/`dual` del nivel y se detiene ante cualquier fallo. No se han registrado campañas ni resultados reales de despliegues V1/V2. La cobertura local medida supera 90%, pero aún no se aplica en CI.
+**Pendiente:** topologías Nginx/Docker; rechazo de destinos externos específicamente en `smoke`; job/reporte de cobertura específicos de loadtest; campañas reales. Los límites locales son hasta 200 VUs para `read-only` y 50 para `login`; `capacity` completa el par `single`/`dual` y para por los umbrales configurados. No se han registrado resultados reales de despliegues V1/V2. La cobertura local supera 90%, pero aún no se aplica en CI.
 
 El PDF V2 pide encontrar límites mediante carga/estrés concurrente y comparar uno contra dos servidores: observar cuándo se afecta el rendimiento y cuándo se rechazan solicitudes. El harness es C++ nativo (no k6); el dashboard puede aportar evidencia complementaria, pero no es requisito para compilar o ejecutar el generador.
 
@@ -24,9 +24,9 @@ Las topologías, cuentas de prueba y video deben estar preparados por el equipo 
 
 ## 3. Cómo se interpretará una ejecución
 
-**Implementado:** `smoke` ejecuta una etapa con 1 usuario virtual; `fixed` mantiene el máximo configurado; `capacity` recorre niveles crecientes (1, 5, 10, 20, 30, 40 y máximo, sin duplicados). Los topes actuales son 50 VUs en `read-only` y 10 en `login`; cada etapa dura entre 1 y 300 segundos. El valor predeterminado de duración es 10 s (30 s en `capacity`). No son metas ni umbrales de desempeño.
+**Implementado:** `smoke` ejecuta una etapa con 1 usuario virtual; `fixed` mantiene el máximo configurado; `capacity` recorre niveles crecientes (1, 5, 10, 20, 40, 80, 120, 160, 200), recortados al máximo configurado y sin duplicados. Los topes son 200 VUs en `read-only` y 50 en `login`; cada etapa dura entre 1 y 300 segundos. El valor predeterminado de duración es 10 s (30 s en `capacity`). No son metas de desempeño.
 
-El runner ejecuta las dos configuraciones de forma secuencial con igual carga y alterna cuál inicia primero entre etapas. **Comportamiento actual:** `capacity` termina el par `single`/`dual` del nivel donde ocurra cualquier fallo y no escala más. **Especificado, pendiente de Fase 3:** cambiar esta regla al criterio configurable de >1% de fallos o p95 >2000 ms y reportar la etapa/causa; sus tests de comportamiento se añadirán junto a la API de producción para que prueben el contrato real. `--cooldown-seconds` acepta 0–300 s; el predeterminado es 15 s para `capacity` y 0 s para otros perfiles.
+El runner ejecuta las dos configuraciones de forma secuencial con igual carga y alterna cuál inicia primero entre etapas. En `capacity`, completa el par `single`/`dual` del nivel y se detiene si cualquiera supera estrictamente `--max-failure-percent` o `--max-p95-ms`. Defaults: 1% de fallos y 2000 ms p95. El porcentaje acepta 0–100 inclusive; p95 debe ser finito y no negativo. `comparison.json` indica si se detuvo, índice de etapa, VUs, límites y criterios por topología. `--cooldown-seconds` acepta 0–300 s; el predeterminado es 15 s para `capacity` y 0 s para otros perfiles.
 
 Los fallos incluyen errores de red, respuestas no 2xx y respuestas exitosas con contenido que no satisface la validación del escenario. `rejected_requests` cuenta específicamente respuestas HTTP 429 y 503; el primer fallo observado puede ser otro estado o un error de red. El p50/p95 se estima con histogramas exponenciales por buckets y no es una medición de precisión arbitraria.
 
@@ -63,9 +63,10 @@ tecflix-loadtest --single-users-url URL --dual-users-url URL --output DIR
   [--dual-metadata-url URL --dual-streaming-url URL]
   [--profile smoke|fixed|capacity] [--scenario read-only|login]
   [--max-vus N] [--stage-seconds N] [--cooldown-seconds N]
+  [--max-failure-percent N] [--max-p95-ms N]
 ```
 
-Los parámetros de umbral aún no están disponibles en el programa. Credenciales se pasan solo como variables de entorno. Ejemplo `read-only` con perfil `smoke` contra destinos locales (reemplazar direcciones y datos por servicios de prueba preparados):
+Los umbrales se aplican al perfil `capacity`; se pueden pasar también en otros perfiles, donde no detienen el escalamiento. Las credenciales se pasan solo como variables de entorno. Ejemplo `read-only` con perfil `smoke` contra destinos locales (reemplazar direcciones y datos por servicios de prueba preparados):
 
 ```bash
 export LOADTEST_USERNAME='cuenta-de-prueba'
@@ -93,13 +94,13 @@ build/loadtest/tecflix-loadtest \
   --output load-tests/results
 ```
 
-Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds` y `--cooldown-seconds` a la capacidad segura del entorno. Las corridas `smoke` deben ser solo locales/privadas. Para los perfiles actuales distintos de smoke, los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
+Ajustar deliberadamente `--profile`, `--max-vus`, `--stage-seconds`, `--cooldown-seconds`, `--max-failure-percent` y `--max-p95-ms` a la capacidad segura del entorno. Las corridas `smoke` deben ser solo locales/privadas. El parser aún acepta hosts externos autorizados en allowlist incluso para smoke; no usar esa combinación. Para otros perfiles, los destinos externos requieren `LOADTEST_ALLOWED_HOSTS` con el hostname exacto y autorización previa.
 
 Cada ejecución crea un subdirectorio `run-<UTC timestamp>` dentro de `--output` con `comparison.json` y `comparison.csv`. JSON contiene configuración, métricas por etapa/ruta, diferencias entre topologías y primer nivel con fallos. CSV permite comparar solicitudes, errores, rechazos, throughput, p50/p95 y cambios porcentuales.
 
 La suite CTest incluye `TecflixLoadtestConfig`, `TecflixLoadtestMetrics`, `TecflixLoadtestRunner`, `TecflixLoadtestComparison`, `TecflixLoadtestReport` y `TecflixLoadtestCli`: cubre configuración/URLs/perfiles, histogramas y fallos, escenarios HTTP simulados, comparación, reportes JSON/CSV y argumentos. Se añadieron casos focalizados para validaciones del CLI/config, errores de configuración del runner y validación/continuación de niveles de comparación. El workflow raíz compila el proyecto y ejecuta CTest dentro del job de Streaming; todavía no hay job específico ni aplicación de cobertura para loadtest. Las pruebas verifican el harness, no son una campaña de desempeño sobre APIs desplegadas.
 
-**Validación local del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** los seis tests pasaron (6/6). Se midió cobertura con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json: 690/747 líneas ejecutadas (92,37%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 92,20%, `comparison.cpp` 93,10%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,47% y `runner.cpp` 86,84%. El agregado local supera el 90%; el umbral aún no está integrado a CI.
+**Validación local del 2026-11-28 (Arch Linux, GCC 16.2.1, CMake 4.5.1):** build completo del CMake raíz correcto; CTest completo pasó 10/10. Con `--coverage`/gcov, excluyendo cabeceras de STL y nlohmann-json, se midieron 752/813 líneas ejecutadas (92,50%) en los seis `.cpp` de `loadtest/src/`. Por archivo: `cli.cpp` 91,19%, `comparison.cpp` 96,36%, `config.cpp` 98,63%, `metrics.cpp` 98,25%, `report.cpp` 92,86% y `runner.cpp` 86,84%. El agregado local supera el 90%; CI aún no mide ni aplica ese umbral.
 
 ## 6. Mantenimiento con nuevos prompts
 
