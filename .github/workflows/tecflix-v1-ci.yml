@@ -56,6 +56,69 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build/ci-streaming --output-on-failure
 
+  loadtest:
+    name: Loadtest - build, CTest, coverage
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install nlohmann-json
+        shell: bash
+        run: |
+          if ! brew list nlohmann-json >/dev/null 2>&1; then
+            brew install nlohmann-json
+          fi
+      - name: Configure with LLVM coverage
+        run: >-
+          cmake -S loadtest -B build/ci-loadtest
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DTECFLIX_COVERAGE=ON
+          -DCMAKE_PREFIX_PATH="$(brew --prefix nlohmann-json)"
+      - name: Build loadtest and tests
+        run: cmake --build build/ci-loadtest --parallel 3
+      - name: Run CTest and check coverage
+        shell: bash
+        env:
+          LLVM_PROFILE_FILE: ${{ github.workspace }}/build/ci-loadtest/coverage-%p.profraw
+        run: |
+          set -euo pipefail
+
+          find build/ci-loadtest -name '*.profraw' -delete
+          ctest --test-dir build/ci-loadtest --output-on-failure
+
+          if ! find build/ci-loadtest \
+            -name 'coverage-*.profraw' -print -quit | grep -q .; then
+            echo "ERROR: LLVM did not produce any .profraw coverage files." >&2
+            exit 1
+          fi
+
+          xcrun llvm-profdata merge -sparse \
+            build/ci-loadtest/coverage-*.profraw \
+            -o build/ci-loadtest/coverage.profdata
+
+          xcrun llvm-cov export \
+            build/ci-loadtest/tecflix-loadtest-config-tests \
+            -object build/ci-loadtest/tecflix-loadtest-metrics-tests \
+            -object build/ci-loadtest/tecflix-loadtest-runner-tests \
+            -object build/ci-loadtest/tecflix-loadtest-comparison-tests \
+            -object build/ci-loadtest/tecflix-loadtest-report-tests \
+            -object build/ci-loadtest/tecflix-loadtest-cli-tests \
+            -instr-profile=build/ci-loadtest/coverage.profdata \
+            -ignore-filename-regex='_deps|/tests/|/usr/|Developer|third_party' \
+            > build/ci-loadtest/coverage.json
+
+          python3 observability/scripts/check_coverage.py \
+            build/ci-loadtest/coverage.json --minimum 90
+      - name: Upload loadtest coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: loadtest-coverage
+          path: build/ci-loadtest/coverage.json
+          if-no-files-found: warn
+          retention-days: 7
+
   users:
     name: Users - build, CTest
     runs-on: macos-latest

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(tecflix_loadtest LANGUAGES CXX)
 
+option(TECFLIX_COVERAGE "Instrumentar loadtest para cobertura LLVM" OFF)
+
 find_package(Threads REQUIRED)
 include(CTest)
 
@@ -33,6 +35,16 @@ target_link_libraries(tecflix-loadtest-core
     PUBLIC Threads::Threads nlohmann_json::nlohmann_json
     PRIVATE httplib::httplib
 )
+
+if(TECFLIX_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "TECFLIX_COVERAGE requiere Clang y herramientas LLVM")
+    endif()
+    target_compile_options(tecflix-loadtest-core PUBLIC
+        -fprofile-instr-generate -fcoverage-mapping
+    )
+    target_link_options(tecflix-loadtest-core PUBLIC -fprofile-instr-generate)
+endif()
 
 add_executable(tecflix-loadtest src/main.cpp)
 target_link_libraries(tecflix-loadtest PRIVATE tecflix-loadtest-core)
