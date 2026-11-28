@@ -4,7 +4,7 @@
     volumes:
       - ./blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
     extra_hosts:
-      - "host.docker.internal:host-gateway"S
+      - "host.docker.internal:host-gateway"
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
