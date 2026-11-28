@@ -1,0 +1,15 @@
+
+services:
+  users-haproxy:
+    image: haproxy:3.0
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:9181:8080"
+
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
