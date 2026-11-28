@@ -1,0 +1,13 @@
+# Laboratorio macOS: independiente del Compose general de 3 APIs.
+services:
+  haproxy-metadata:
+    image: haproxy:3.2
+    # Asegura que host.docker.internal resuelva al host macOS,
+    # incluso cuando Docker Desktop no lo publica por DNS.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9082:9082"
+      - "127.0.0.1:9099:9099"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

@@ -4,5 +4,4 @@ build-mongo/
 vcpkg_installed/
 cmake-build-*/
 .idea/
-.env.example
 .env

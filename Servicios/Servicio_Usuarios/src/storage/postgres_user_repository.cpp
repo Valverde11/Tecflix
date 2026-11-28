@@ -1,6 +1,7 @@
 #include "tecflix/users/storage/postgres_user_repository.hpp"
 
 #include <pqxx/pqxx>
+#include <pqxx/version>
 
 #include <algorithm>
 #include <array>
@@ -56,8 +57,13 @@ void FromHex(std::string_view hex, std::array<std::uint8_t, N>& bytes) {
     bytes[i] = static_cast<std::uint8_t>((Unhex(hex[2*i]) << 4) | Unhex(hex[2*i+1]));
   }
 }
+#if PQXX_VERSION_MAJOR >= 8
+using PostgresRow = pqxx:row_ref;
+#else
+using PostgresRow = pqxx::row;
+#endif
 
-UserRecord ReadRecord(const pqxx::row_ref& row) {
+UserRecord ReadRecord(const PostgresRow::row_ref& row) {
   UserRecord record;
   record.id = static_cast<std::uint64_t>(row["id"].as<std::int64_t>());
   record.username = row["username"].as<std::string>();

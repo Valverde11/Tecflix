@@ -9,3 +9,7 @@ services:
       - "127.0.0.1:9099:9099"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+    # En Docker Engine sobre Ubuntu, hace resoluble host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
