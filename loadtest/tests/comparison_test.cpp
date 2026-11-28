@@ -213,6 +213,53 @@ void TestCapacityStopsAfterFirstFailedPairedStage() {
           "completa y registra el par dual del nivel fallido");
 }
 
+    void TestComparisonRejectsEmptyStagesAndInvalidCooldown() {
+        using namespace tecflix::loadtest;
+        ComparisonConfig comparison;
+        bool rejected = false;
+        try {
+            ComparisonRunner().Run(comparison);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        Check(rejected, "rechaza comparación sin etapas");
+
+        comparison.stages = {{1, std::chrono::seconds(1)}};
+        comparison.cooldown = std::chrono::seconds(301);
+        rejected = false;
+        try {
+            ComparisonRunner().Run(comparison);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        Check(rejected, "rechaza cooldown fuera de rango");
+    }
+
+    void TestComparisonContinuesWhenStopAfterFirstFailureIsDisabled() {
+        using namespace tecflix::loadtest;
+        FailingLoginServer server;
+        WorkloadConfig config;
+        config.users = ParseTarget("http://127.0.0.1:" +
+                                   std::to_string(server.Port()));
+        config.username = "test-user";
+        config.password = "test-password";
+        config.scenario = Scenario::login;
+
+        ComparisonConfig comparison;
+        comparison.single = config;
+        comparison.dual = config;
+        comparison.stages = {
+            {1, std::chrono::seconds(1)},
+            {2, std::chrono::seconds(1)},
+        };
+
+        const auto results = ComparisonRunner().Run(comparison);
+        Check(results.size() == 2,
+              "continúa los niveles si stop_after_first_failure es falso");
+        Check(results.size() == 2 && results[1].virtual_users == 2,
+              "ejecuta el segundo nivel después del primer par fallido");
+    }
+
 }  // namespace
 
 int main() {
@@ -221,6 +268,8 @@ int main() {
     TestRejectsEmptyComparisonReport();
     TestReportsTheFirstObservedFailure();
     TestCapacityStopsAfterFirstFailedPairedStage();
+    TestComparisonRejectsEmptyStagesAndInvalidCooldown();
+    TestComparisonContinuesWhenStopAfterFirstFailureIsDisabled();
     if (failures != 0) {
         std::cerr << failures << " prueba(s) fallida(s)\n";
         return 1;
