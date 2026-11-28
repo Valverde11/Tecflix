@@ -177,10 +177,22 @@ void TestCapacityDefaultsAndAllowedHostList() {
           "usa cooldown predeterminado de capacity");
     Check(parsed.max_virtual_users == 20,
           "conserva el máximo predeterminado read-only");
+    Check(parsed.max_failure_percent == 1.0,
+          "usa el umbral predeterminado de fallos");
+    Check(parsed.max_p95_ms == 2000.0,
+          "usa el umbral predeterminado de p95");
     Check(parsed.allowed_hosts.size() == 2,
           "separa allowlist y omite elementos vacíos");
     Check(parsed.single_users_url == "http://api.example.com",
           "acepta hostname externo autorizado exactamente");
+
+    arguments.insert(arguments.end(), {"--max-failure-percent", "2.5",
+                                       "--max-p95-ms", "1500.25"});
+    const auto overridden = ParseCommandLine(arguments, environment);
+    Check(overridden.max_failure_percent == 2.5,
+          "acepta override decimal del porcentaje de fallos");
+    Check(overridden.max_p95_ms == 1500.25,
+          "acepta override decimal del máximo p95");
 }
 
 void TestRejectsInvalidProfilesScenariosAndMissingTargets() {
@@ -227,6 +239,24 @@ void TestRejectsInvalidNumericOptionsAndEmptyCredentials() {
     CheckThrowsContaining(
         [&] { ParseCommandLine(ReadOnlyArguments(), environment); },
         "LOADTEST_USERNAME", "rechaza variable username vacía");
+
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--max-failure-percent", "100.1"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "entre 0 y 100", "rechaza porcentaje de fallos fuera de rango");
+
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--max-failure-percent", "nan"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "número válido", "rechaza porcentaje de fallos no finito");
+
+    arguments = ReadOnlyArguments();
+    arguments.insert(arguments.end(), {"--max-p95-ms", "-1"});
+    CheckThrowsContaining(
+        [&] { ParseCommandLine(arguments, CompleteEnvironment()); },
+        "no negativo", "rechaza máximo p95 negativo");
 }
 
 }  // namespace
