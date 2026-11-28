@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 16992   284.859089/s
+    checks_succeeded...: 100.00% 16992 out of 16992
+    checks_failed......: 0.00%   0 out of 16992
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=19.446284 min=14.660212 med=17.330247 max=122.941144 p(90)=22.946263 p(95)=30.938135 p(99)=65.418543
+    load_metadata_video_duration_ms.......: avg=0.878564  min=0.460131  med=0.675593  max=28.838959  p(90)=0.93516   p(95)=1.148842  p(99)=3.707175 
+    load_streaming_manifest_duration_ms...: avg=0.313204  min=0.141935  med=0.24316   max=24.88561   p(90)=0.318022  p(95)=0.36206   p(99)=1.123778 
+    load_streaming_segment_duration_ms....: avg=4.866054  min=1.041136  med=1.73564   max=82.666211  p(90)=4.510991  p(95)=42.857078 p(99)=49.123417
+    load_streaming_status_duration_ms.....: avg=0.401342  min=0.142512  med=0.255446  max=25.092867  p(90)=0.346559  p(95)=0.397714  p(99)=3.45911  
+    load_users_profile_duration_ms........: avg=0.503288  min=0.153556  med=0.339566  max=23.169228  p(90)=0.478275  p(95)=0.555917  p(99)=6.650748 
+    load_users_quota_duration_ms..........: avg=0.2906    min=0.143637  med=0.234986  max=16.816853  p(90)=0.315323  p(95)=0.365645  p(99)=1.060374 
+
+    HTTP
+    http_req_duration.....................: avg=3.81ms    min=141.93µs  med=371.31µs  max=122.94ms   p(90)=16.92ms   p(95)=18.38ms   p(99)=43.28ms  
+    http_req_failed.......................: 0.00%  0 out of 13219
+    http_reqs.............................: 13219  221.607362/s
+
+    EXECUTION
+    iteration_duration....................: avg=1.02s     min=1.01s     med=1.02s     max=1.19s      p(90)=1.03s     p(95)=1.06s     p(99)=1.16s    
+    iterations............................: 1888   31.65101/s
+    vus...................................: 32     min=32         max=32
+    vus_max...............................: 32     min=32         max=32
+
+    NETWORK
+    data_received.........................: 4.8 GB 81 MB/s
+    data_sent.............................: 3.9 MB 65 kB/s
+
+
+
