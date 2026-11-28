@@ -210,6 +210,60 @@ void TestJourneyRejectsInvalidVideoIdBeforeNetworkCalls() {
           "no contacta servicios con configuración inválida");
 }
 
+void TestRunnerRejectsInvalidConfigurationBeforeNetworkCalls() {
+    FakeTecflix services;
+    auto config = services.ReadOnlyConfig();
+    bool rejected = false;
+    config.metadata.reset();
+    try {
+        tecflix::loadtest::WorkloadRunner().Run(
+            config, {1, std::chrono::seconds(1)});
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    Check(rejected, "read-only requiere URLs de metadata y streaming");
+    Check(services.login_requests == 0,
+          "rechaza la configuración read-only antes de autenticar");
+
+    config = services.ReadOnlyConfig();
+    config.username.clear();
+    rejected = false;
+    try {
+        tecflix::loadtest::WorkloadRunner().Run(
+            config, {1, std::chrono::seconds(1)});
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    Check(rejected, "requiere credenciales no vacías");
+
+    config = services.ReadOnlyConfig();
+    rejected = false;
+    try {
+        tecflix::loadtest::WorkloadRunner().Run(
+            config, {0, std::chrono::seconds(1)});
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    Check(rejected, "rechaza etapa con cero usuarios virtuales");
+    Check(services.login_requests == 0,
+          "rechaza la etapa inválida antes de iniciar llamadas");
+}
+
+void TestReadOnlyJourneyRejectsFailedPreparationLogin() {
+    FakeTecflix services;
+    services.reject_logins = true;
+    bool rejected = false;
+    try {
+        tecflix::loadtest::WorkloadRunner().Run(
+            services.ReadOnlyConfig(), {1, std::chrono::seconds(1)});
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    Check(rejected, "detiene read-only si falla el login de preparación");
+    Check(services.login_requests == 1,
+          "intenta una sola autenticación de preparación");
+}
+
 void TestComparisonRunnerPairsEquivalentStages() {
     FakeTecflix services;
     auto config = services.ReadOnlyConfig();
@@ -260,6 +314,8 @@ int main() {
     TestReadOnlyJourneyExercisesFunctionalRoutes();
     TestLoginScenarioMeasuresAuthenticationRequests();
     TestJourneyRejectsInvalidVideoIdBeforeNetworkCalls();
+    TestRunnerRejectsInvalidConfigurationBeforeNetworkCalls();
+    TestReadOnlyJourneyRejectsFailedPreparationLogin();
     TestComparisonRunnerPairsEquivalentStages();
     TestCapacityComparisonStopsAtFirstPairedFailure();
     if (failures != 0) {
