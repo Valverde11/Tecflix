@@ -93,6 +93,40 @@ class ApiServerHarness {
   int port_ = 0;
 };
 
+// Verifica que el endpoint /ready distinga liveness de readiness.
+class UnreadyVideoRepository : public InMemoryVideoRepository {
+ public:
+  bool Ready() const override { return false; }
+};
+
+class FailingReadyVideoRepository : public InMemoryVideoRepository {
+ public:
+  bool Ready() const override { throw std::runtime_error("base desconectada"); }
+};
+
+TEST(Readiness, RepositorioNoDisponibleResponde503SinExponerError) {
+  UnreadyVideoRepository repository;
+  ApiServerHarness harness(repository);
+  auto client = harness.Client();
+  const auto health = client.Get("/health");
+  ASSERT_TRUE(health);
+  EXPECT_EQ(health->status, 200);
+  const auto ready = client.Get("/ready");
+  ASSERT_TRUE(ready);
+  EXPECT_EQ(ready->status, 503);
+  EXPECT_EQ(json::parse(ready->body), (json{{"status", "unavailable"}}));
+}
+
+TEST(Readiness, ExcepcionDeRepositorioResponde503) {
+  FailingReadyVideoRepository repository;
+  ApiServerHarness harness(repository);
+  auto client = harness.Client();
+  const auto ready = client.Get("/ready");
+  ASSERT_TRUE(ready);
+  EXPECT_EQ(ready->status, 503);
+  EXPECT_EQ(json::parse(ready->body), (json{{"status", "unavailable"}}));
+}
+
 class ApiTest : public ::testing::Test {
  protected:
   ApiTest() : harness_(repository_) {}
@@ -133,6 +167,14 @@ class ApiTest : public ::testing::Test {
   InMemoryVideoRepository repository_;
   ApiServerHarness harness_;
 };
+
+TEST_F(ApiTest, ReadinessDisponibleDevuelve200) {
+  auto client = harness_.Client();
+  const auto result = client.Get("/ready");
+  ASSERT_TRUE(result);
+  EXPECT_EQ(result->status, 200);
+  EXPECT_EQ(json::parse(result->body), (json{{"status", "ok"}}));
+}
 
 TEST_F(ApiTest, HealthDevuelveOk) {
   auto client = harness_.Client();

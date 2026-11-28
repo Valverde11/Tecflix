@@ -16,6 +16,9 @@ class VideoRepository {
  public:
   virtual ~VideoRepository() = default;
 
+  // Readiness para HAProxy; memoria disponible por defecto. MongoDB valida ping.
+  virtual bool Ready() const { return true; }
+
   // false si ya existe un video con ese id.
   virtual bool Insert(const Video& video) = 0;
   virtual std::optional<Video> FindById(const std::string& id) const = 0;

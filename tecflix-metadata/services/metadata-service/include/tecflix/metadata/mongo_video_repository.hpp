@@ -20,6 +20,7 @@ class MongoVideoRepository : public VideoRepository {
   MongoVideoRepository(const MongoVideoRepository&) = delete;
   MongoVideoRepository& operator=(const MongoVideoRepository&) = delete;
 
+  bool Ready() const override;
   bool Insert(const Video& video) override;
   std::optional<Video> FindById(const std::string& id) const override;
   bool Replace(const Video& video) override;

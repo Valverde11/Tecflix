@@ -1,6 +1,7 @@
 #pragma once
 
 #include <httplib.h>
+#include <functional>
 
 namespace tecflix::metadata {
 
@@ -9,8 +10,10 @@ namespace tecflix::metadata {
 class HealthController {
  public:
   static constexpr const char* kRoute = "/health";
+  static constexpr const char* kReadyRoute = "/ready";
 
-  void RegisterRoutes(httplib::Server& server) const;
+  void RegisterRoutes(httplib::Server& server,
+                      std::function<bool()> storage_ready) const;
 };
 
 }  // namespace tecflix::metadata

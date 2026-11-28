@@ -88,6 +88,9 @@ Testing/
 *.exe
 *.pdb
 *.ilk
+# Python
+__pycache__/
+*.py[cod]
 
 # Archivos generados por pruebas de cobertura
 *.gcda

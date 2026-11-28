@@ -3,6 +3,7 @@
 #include <bsoncxx/json.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/collection.hpp>
+#include <mongocxx/database.hpp>
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/options/find.hpp>
@@ -173,6 +174,15 @@ MongoVideoRepository::MongoVideoRepository(const std::string& uri,
 }
 
 MongoVideoRepository::~MongoVideoRepository() = default;
+
+// ping real a MongoDB: si falla, /ready responde 503 y HAProxy deja de enviar
+// nuevas peticiones a esta instancia. El controlador captura las excepciones.
+bool MongoVideoRepository::Ready() const {
+  const auto client = impl_->pool.acquire();
+  const auto command = ToBsonText(R"({"ping":1})");
+  static_cast<void>((*client)[impl_->database].run_command(command.view()));
+  return true;
+}
 
 bool MongoVideoRepository::Insert(const Video& video) {
   const auto client = impl_->pool.acquire();

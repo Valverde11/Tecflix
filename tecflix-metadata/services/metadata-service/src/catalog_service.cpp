@@ -43,6 +43,8 @@ void ApplyPatch(const VideoPatch& patch, Video& video) {
 CatalogService::CatalogService(VideoRepository& repository, Clock clock)
     : repository_(repository), clock_(std::move(clock)) {}
 
+bool CatalogService::StorageReady() const { return repository_.Ready(); }
+
 Video CatalogService::Create(const Identity& user, const CreateVideoRequest& request) {
   Video video;
   video.id = request.id;

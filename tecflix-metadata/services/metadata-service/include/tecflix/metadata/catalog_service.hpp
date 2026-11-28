@@ -33,6 +33,7 @@ class CatalogService {
   void Delete(const Identity& user, const std::string& id);
   VideoPage List(const std::optional<Identity>& viewer, VideoQuery query) const;
   UsageSummary Usage(const Identity& user, const std::string& owner_id) const;
+  bool StorageReady() const;
 
  private:
   // Carga un video que `user` puede modificar: 404 si no lo ve, 403 si lo ve pero no es suyo.

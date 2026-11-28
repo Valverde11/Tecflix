@@ -19,7 +19,7 @@ ApiServer::ApiServer(CatalogService& service, std::string cors_origin,
       video_controller_(service, jwt_validator_) {
   server_.set_payload_max_length(kMaxBodyBytes);
   ConfigureCors();
-  health_controller_.RegisterRoutes(server_);
+  health_controller_.RegisterRoutes(server_, [&service] { return service.StorageReady(); });
   video_controller_.RegisterRoutes(server_);
 }
 

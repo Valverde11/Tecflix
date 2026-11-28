@@ -1,0 +1,13 @@
+# Ejecutar en macOS Docker Desktop. Los puertos son SOLO localhost del Mac.
+services:
+  haproxy-v2:
+    image: haproxy:3.2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9281:9281"
+      - "127.0.0.1:9282:9282"
+      - "127.0.0.1:9283:9283"
+      - "127.0.0.1:9299:9299"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
