@@ -1,0 +1,8 @@
+run,scenario,vus,think,requests,req_per_s,p50_ms,p95_ms,p99_ms,max_ms,failed_pct
+journey_think1_v1,journey,1,1,416,6.9,0.5,17.38,20.29,48.91,0
+journey_think1_v8,journey,8,1,3307,54.6,0.38,17.36,29.14,54.23,0
+journey_think1_v32,journey,32,1,13219,217.8,0.32,17.66,35.25,117.17,0
+journey_think1_v64,journey,64,1,26295,430.8,0.33,17.41,52.25,223.14,0
+journey_think0_v8,journey,8,0,95945,1598.3,0.44,27.92,33.68,57.06,0
+journey_think0_v32,journey,32,0,131512,2187.8,2.09,84.97,112.47,195.7,0
+journey_think0_v64,journey,64,0,130238,2165.7,2.41,196.03,275.75,452.69,0

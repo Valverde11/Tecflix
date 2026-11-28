@@ -7,6 +7,7 @@
 
 #include <httplib.h>
 
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <cstdint>
@@ -33,7 +34,8 @@ public:
                  FfmpegTranscoder transcoder,
                  const tecflix::auth::JwtValidator& validator,
                  std::shared_ptr<const QuotaClient> quota_client = nullptr,
-                 std::string metadata_host = "", int metadata_port = 0);
+                 std::string metadata_host = "", int metadata_port = 0,
+                 std::chrono::milliseconds metadata_cache_ttl = std::chrono::milliseconds::zero());
     ~VideoService();
 
     VideoService(const VideoService&) = delete;
@@ -52,6 +54,8 @@ private:
     bool authorize_video(const httplib::Request& request,
                          httplib::Response& response,
                          const std::string& video_id) const;
+    std::optional<bool> cached_visibility(const std::string& video_id) const;
+    void remember_visibility(const std::string& video_id, bool is_public) const;
     void stream_segment(const std::filesystem::path& path,
                         httplib::Response& response) const;
     void worker_loop();
@@ -74,6 +78,15 @@ private:
     std::shared_ptr<const QuotaClient> quota_client_;
     std::string metadata_host_;
     int metadata_port_ = 0;
+    // Visibilidad confirmada por metadata, por video, durante metadata_cache_ttl_
+    // (cero = sin caché). Solo guarda respuestas 200 cuyo owner coincide.
+    struct CachedVisibility {
+        bool is_public = false;
+        std::chrono::steady_clock::time_point expires_at;
+    };
+    std::chrono::milliseconds metadata_cache_ttl_{0};
+    mutable std::mutex metadata_cache_mutex_;
+    mutable std::unordered_map<std::string, CachedVisibility> metadata_cache_;
     std::unordered_map<std::string, UploadRecord> records_;
     const tecflix::auth::JwtValidator& validator_;
     mutable std::mutex status_mutex_;

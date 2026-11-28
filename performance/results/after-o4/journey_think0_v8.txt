@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 123354  2054.873314/s
+    checks_succeeded...: 100.00% 123354 out of 123354
+    checks_failed......: 0.00%   0 out of 123354
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=26.086839 min=17.215573 med=25.581936 max=42.459053 p(90)=31.944552 p(95)=33.293966 p(99)=35.786358
+    load_metadata_video_duration_ms.......: avg=0.985639  min=0.5509    med=0.882543  max=6.78059   p(90)=1.312966  p(95)=1.623088  p(99)=2.618811 
+    load_streaming_manifest_duration_ms...: avg=0.317206  min=0.161186  med=0.292571  max=3.812723  p(90)=0.379206  p(95)=0.43876   p(99)=0.933565 
+    load_streaming_segment_duration_ms....: avg=5.352292  min=1.29533   med=3.143984  max=57.064558 p(90)=8.946934  p(95)=11.679036 p(99)=47.567512
+    load_streaming_status_duration_ms.....: avg=0.33998   min=0.15499   med=0.29854   max=7.111226  p(90)=0.401357  p(95)=0.498187  p(99)=1.284618 
+    load_users_profile_duration_ms........: avg=0.466264  min=0.169353  med=0.383408  max=7.330154  p(90)=0.677837  p(95)=0.9526    p(99)=1.823781 
+    load_users_quota_duration_ms..........: avg=0.317327  min=0.146491  med=0.280377  max=4.868294  p(90)=0.396652  p(95)=0.50441   p(99)=1.082493 
+
+    HTTP
+    http_req_duration.....................: avg=4.83ms    min=146.49µs  med=439.6µs   max=57.06ms   p(90)=23.59ms   p(95)=27.91ms   p(99)=33.67ms  
+    http_req_failed.......................: 0.00% 0 out of 95945
+    http_reqs.............................: 95945 1598.284775/s
+
+    EXECUTION
+    iteration_duration....................: avg=35.01ms   min=22.12ms   med=33.34ms   max=92.15ms   p(90)=41.68ms   p(95)=45.5ms    p(99)=77.92ms  
+    iterations............................: 13706 228.319257/s
+    vus...................................: 8     min=8          max=8
+    vus_max...............................: 8     min=8          max=8
+
+    NETWORK
+    data_received.........................: 35 GB 585 MB/s
+    data_sent.............................: 28 MB 467 kB/s
+
+
+

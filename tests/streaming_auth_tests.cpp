@@ -163,9 +163,11 @@ int main() {
         // private media only by its owner, including HLS segment URLs.
         std::atomic<bool> public_visibility{true};
         std::atomic<bool> mismatched_owner{false};
+        std::atomic<int> metadata_calls{0};
         httplib::Server metadata_server;
         metadata_server.Get(R"(/api/metadata/videos/([a-f0-9]{32}))",
             [&](const httplib::Request& req, httplib::Response& res) {
+                ++metadata_calls;
                 if (!public_visibility &&
                     req.get_header_value("Authorization") != "Bearer " + kTokenA) {
                     res.status = 404; return;
@@ -180,6 +182,56 @@ int main() {
         require(metadata_port > 0, "Metadata mock binds");
         std::thread metadata_thread([&] { metadata_server.listen_after_bind(); });
         metadata_server.wait_until_ready();
+        {
+            // Visibility cache (O4): one metadata call serves the status, playlist and
+            // segments; a change to private applies once the TTL expires.
+            constexpr auto kCacheTtl = 1000ms;
+            tecflix::VideoService cached_videos(temp.path / "cached-videos", 1,
+                tecflix::FfmpegTranscoder(fake_ffmpeg.string()), validator, nullptr,
+                "127.0.0.1", metadata_port, kCacheTtl);
+            RunningServer cached_running(cached_videos);
+            httplib::Client cached_client("127.0.0.1", cached_running.port);
+            cached_client.set_read_timeout(5);
+            const auto created = cached_client.Post("/api/videos", bearer(kTokenA),
+                                                   body, "application/octet-stream");
+            require(status(created, "cached upload") == 202, "Cached upload: 202");
+            const auto cached_id = nlohmann::json::parse(created->body).at("id").get<std::string>();
+            const auto path = "/api/videos/" + cached_id;
+            bool cached_ready = false;
+            for (int attempt = 0; attempt < 100 && !cached_ready; ++attempt) {
+                auto result = cached_client.Get(path, bearer(kTokenA));
+                cached_ready = status(result, "cached status") == 200 &&
+                               nlohmann::json::parse(result->body).at("status") == "ready";
+                if (!cached_ready) std::this_thread::sleep_for(20ms);
+            }
+            require(cached_ready, "Cache test transcode ready");
+
+            std::this_thread::sleep_for(kCacheTtl + 200ms);  // start with an empty cache
+            const int calls_before = metadata_calls;
+            for (const auto& resource : {path, path + "/index.m3u8",
+                                         path + "/segments/segment_00000.ts"}) {
+                require(status(cached_client.Get(resource), "cached public") == 200,
+                        "Cached public resource is accessible anonymously");
+            }
+            require(metadata_calls - calls_before == 1,
+                    "Status, playlist and segment share one metadata call");
+
+            public_visibility = false;
+            require(status(cached_client.Get(path, bearer(kTokenB)), "within TTL") == 200,
+                    "Within the TTL the cached public answer is reused (documented trade-off)");
+            std::this_thread::sleep_for(kCacheTtl + 200ms);
+            require(status(cached_client.Get(path, bearer(kTokenB)), "expired B") == 403,
+                    "After the TTL another user is denied: 403");
+            require(status(cached_client.Get(path), "expired anonymous") == 401,
+                    "After the TTL anonymous access is denied: 401");
+            require(status(cached_client.Get(path, bearer(kTokenA)), "cached owner") == 200,
+                    "Owner keeps access to the private video");
+            const int calls_private = metadata_calls;
+            require(status(cached_client.Get(path, bearer(kTokenB)), "cached private B") == 403,
+                    "Cached private answer still denies another user");
+            require(metadata_calls == calls_private, "Private answer served from the cache");
+            public_visibility = true;
+        }
         {
             tecflix::VideoService visible_videos(temp.path / "visible-videos", 1,
                 tecflix::FfmpegTranscoder(fake_ffmpeg.string()), validator, nullptr,

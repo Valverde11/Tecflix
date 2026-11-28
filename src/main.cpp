@@ -6,6 +6,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -88,9 +89,27 @@ int main() {
         }
         metadata_port = static_cast<int>(parsed);
     }
+    // Segundos que streaming recuerda la visibilidad de un video confirmada por
+    // metadata (0 = preguntar siempre). Es también el tiempo máximo que tarda en
+    // aplicarse un cambio de público a privado.
+    constexpr long kDefaultMetadataCacheSeconds = 5;
+    long metadata_cache_seconds = kDefaultMetadataCacheSeconds;
+    {
+        const auto value = environment_variable("TECFLIX_METADATA_CACHE_SECONDS", "");
+        if (!value.empty()) {
+            char* end = nullptr;
+            const long parsed = std::strtol(value.c_str(), &end, 10);
+            if (end == value.c_str() || *end != '\0' || parsed < 0 || parsed > 3600) {
+                std::cerr << "Invalid TECFLIX_METADATA_CACHE_SECONDS\n";
+                return 1;
+            }
+            metadata_cache_seconds = parsed;
+        }
+    }
     tecflix::VideoService videos(storage, worker_count,
                                  std::move(transcoder), validator, quota_client,
-                                 metadata_host, metadata_port);
+                                 metadata_host, metadata_port,
+                                 std::chrono::seconds(metadata_cache_seconds));
 
 #ifdef TECFLIX_REAL_TELEMETRY
     const auto telemetry_config = tecflix::telemetry::ConfigFromEnv("streaming-service");

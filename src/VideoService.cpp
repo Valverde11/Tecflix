@@ -23,6 +23,8 @@ constexpr std::uint64_t kMaxUploadBytes = 2ULL * 1024 * 1024 * 1024;
 constexpr std::size_t kMaxQueuedJobs = 32;
 constexpr std::size_t kStreamChunkBytes = 64 * 1024;
 constexpr char kUploadContentType[] = "application/octet-stream";
+// Tope de entradas del caché de visibilidad: al llenarse se vacía (memoria acotada).
+constexpr std::size_t kMaxCachedVisibilities = 10000;
 
 const char* status_name(JobStatus status) {
     switch (status) {
@@ -54,13 +56,15 @@ VideoService::VideoService(std::filesystem::path storage_directory,
                            FfmpegTranscoder transcoder,
                            const tecflix::auth::JwtValidator& validator,
                            std::shared_ptr<const QuotaClient> quota_client,
-                           std::string metadata_host, int metadata_port)
+                           std::string metadata_host, int metadata_port,
+                           std::chrono::milliseconds metadata_cache_ttl)
     : storage_directory_(std::move(storage_directory)),
       transcoder_(std::move(transcoder)),
       record_store_(storage_directory_),
       quota_client_(std::move(quota_client)),
       metadata_host_(std::move(metadata_host)),
       metadata_port_(metadata_port),
+      metadata_cache_ttl_(std::max(metadata_cache_ttl, std::chrono::milliseconds::zero())),
       validator_(validator) {
     std::vector<std::string> resume_jobs;
     std::vector<std::string> resume_deletions;
@@ -311,36 +315,70 @@ bool VideoService::authorize_video(const httplib::Request& request,
 
     // Metadata is the authority for public/private visibility. Never infer
     // public access from the route or from anything supplied by the browser.
-    httplib::Client metadata(metadata_host_, metadata_port_);
-    metadata.set_connection_timeout(2);
-    metadata.set_read_timeout(3);
-    httplib::Headers headers;
-    if (claims) headers.emplace("Authorization", request.get_header_value("Authorization"));
-    const auto result = metadata.Get("/api/metadata/videos/" + video_id, headers);
-    if (!result) return error(response, 503, "metadata_unavailable"), false;
+    // A recent answer for this video (see remember_visibility) avoids one HTTP call
+    // per request: a player asks for the status, the playlist and every segment.
+    std::optional<bool> is_public = cached_visibility(video_id);
+    if (!is_public) {
+        httplib::Client metadata(metadata_host_, metadata_port_);
+        metadata.set_connection_timeout(2);
+        metadata.set_read_timeout(3);
+        httplib::Headers headers;
+        if (claims) headers.emplace("Authorization", request.get_header_value("Authorization"));
+        const auto result = metadata.Get("/api/metadata/videos/" + video_id, headers);
+        if (!result) return error(response, 503, "metadata_unavailable"), false;
 
-    if (result->status != 200) {
-        if (result->status == 404 || result->status == 403 || result->status == 401)
-            return error(response, claims ? 403 : 401, "video_access_denied"), false;
-        return error(response, 503, "metadata_unavailable"), false;
+        if (result->status != 200) {
+            if (result->status == 404 || result->status == 403 || result->status == 401)
+                return error(response, claims ? 403 : 401, "video_access_denied"), false;
+            return error(response, 503, "metadata_unavailable"), false;
+        }
+
+        const auto info = nlohmann::json::parse(result->body, nullptr, false);
+        if (info.is_discarded() || !info.is_object() || !info.contains("id") ||
+            !info.contains("owner_id") || !info.contains("visibility") ||
+            !info["id"].is_string() || !info["owner_id"].is_string() ||
+            !info["visibility"].is_string()) {
+            return error(response, 503, "metadata_invalid_response"), false;
+        }
+        if (info["id"].get<std::string>() != video_id ||
+            info["owner_id"].get<std::string>() != std::to_string(owner_id)) {
+            return error(response, 503, "metadata_owner_mismatch"), false;
+        }
+        const auto visibility = info["visibility"].get<std::string>();
+        if (visibility != "public" && visibility != "private")
+            return error(response, 503, "metadata_invalid_response"), false;
+        is_public = visibility == "public";
+        remember_visibility(video_id, *is_public);
     }
 
-    const auto info = nlohmann::json::parse(result->body, nullptr, false);
-    if (info.is_discarded() || !info.is_object() || !info.contains("id") ||
-        !info.contains("owner_id") || !info.contains("visibility") ||
-        !info["id"].is_string() || !info["owner_id"].is_string() ||
-        !info["visibility"].is_string()) {
-        return error(response, 503, "metadata_invalid_response"), false;
-    }
-    if (info["id"].get<std::string>() != video_id ||
-        info["owner_id"].get<std::string>() != std::to_string(owner_id)) {
-        return error(response, 503, "metadata_owner_mismatch"), false;
-    }
-    const auto visibility = info["visibility"].get<std::string>();
-    if (visibility == "public") return true;
-    if (visibility == "private" && claims && claims->user_id == owner_id) return true;
-    if (visibility != "private") return error(response, 503, "metadata_invalid_response"), false;
+    // Same decision whether the visibility came from metadata or from the cache:
+    // a private video is only readable by its owner (metadata answers 404 to anyone
+    // else, which also ends here as 403/401).
+    if (*is_public) return true;
+    if (claims && claims->user_id == owner_id) return true;
     return error(response, claims ? 403 : 401, "video_access_denied"), false;
+}
+
+std::optional<bool> VideoService::cached_visibility(const std::string& video_id) const {
+    if (metadata_cache_ttl_ == std::chrono::milliseconds::zero()) return std::nullopt;
+    std::lock_guard<std::mutex> lock(metadata_cache_mutex_);
+    const auto found = metadata_cache_.find(video_id);
+    if (found == metadata_cache_.end()) return std::nullopt;
+    if (std::chrono::steady_clock::now() >= found->second.expires_at) {
+        metadata_cache_.erase(found);
+        return std::nullopt;
+    }
+    return found->second.is_public;
+}
+
+// Only called after metadata answered 200 with a matching owner. Trade-off: a video
+// switched from public to private keeps being served for at most metadata_cache_ttl_.
+void VideoService::remember_visibility(const std::string& video_id, bool is_public) const {
+    if (metadata_cache_ttl_ == std::chrono::milliseconds::zero()) return;
+    std::lock_guard<std::mutex> lock(metadata_cache_mutex_);
+    if (metadata_cache_.size() >= kMaxCachedVisibilities) metadata_cache_.clear();
+    metadata_cache_[video_id] =
+        CachedVisibility{is_public, std::chrono::steady_clock::now() + metadata_cache_ttl_};
 }
 
 void VideoService::error(httplib::Response& response, int code, const char* message) {

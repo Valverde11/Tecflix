@@ -1,0 +1,35 @@
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 16992   279.945935/s
+    checks_succeeded...: 100.00% 16992 out of 16992
+    checks_failed......: 0.00%   0 out of 16992
+
+
+    CUSTOM
+    load_metadata_catalog_duration_ms.....: avg=18.335683 min=13.915222 med=16.718404 max=117.17445 p(90)=19.85918 p(95)=24.117472 p(99)=77.618586
+    load_metadata_video_duration_ms.......: avg=0.816557  min=0.477204  med=0.663968  max=37.193968 p(90)=0.840148 p(95)=0.964479  p(99)=3.419409 
+    load_streaming_manifest_duration_ms...: avg=0.262843  min=0.125154  med=0.230524  max=12.276885 p(90)=0.293492 p(95)=0.324744  p(99)=0.81222  
+    load_streaming_segment_duration_ms....: avg=4.379708  min=1.024872  med=1.692978  max=69.417942 p(90)=3.949136 p(95)=33.839599 p(99)=47.104234
+    load_streaming_status_duration_ms.....: avg=0.365843  min=0.14831   med=0.236671  max=33.540135 p(90)=0.305685 p(95)=0.368979  p(99)=3.169024 
+    load_users_profile_duration_ms........: avg=0.347264  min=0.151596  med=0.297591  max=6.328547  p(90)=0.405035 p(95)=0.480415  p(99)=1.760844 
+    load_users_quota_duration_ms..........: avg=0.24463   min=0.120215  med=0.218311  max=3.672244  p(90)=0.289767 p(95)=0.331961  p(99)=0.840659 
+
+    HTTP
+    http_req_duration.....................: avg=3.53ms    min=120.21µs  med=324.7µs   max=117.17ms  p(90)=16.21ms  p(95)=17.65ms   p(99)=35.25ms  
+    http_req_failed.......................: 0.00%  0 out of 13219
+    http_reqs.............................: 13219  217.785153/s
+
+    EXECUTION
+    iteration_duration....................: avg=1.02s     min=1.01s     med=1.02s     max=1.18s     p(90)=1.02s    p(95)=1.06s     p(99)=1.13s    
+    iterations............................: 1888   31.105104/s
+    vus...................................: 32     min=32         max=32
+    vus_max...............................: 32     min=32         max=32
+
+    NETWORK
+    data_received.........................: 4.8 GB 80 MB/s
+    data_sent.............................: 3.9 MB 64 kB/s
+
+
+
