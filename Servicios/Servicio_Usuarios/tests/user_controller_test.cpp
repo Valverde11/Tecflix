@@ -161,7 +161,7 @@ TEST_F(UserControllerTest, LoginRejectsWrongCredentials) {
 class ProtectedRoutesTest : public HttpTestServer {
  protected:
   void SetUp() override {
-    HttpTestServer::SetUp();
+    ASSERT_NO_FATAL_FAILURE(HttpTestServer::SetUp());
     ana_ = SignUp("ana");
     beto_ = SignUp("beto");
   }

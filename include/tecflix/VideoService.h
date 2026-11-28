@@ -39,7 +39,7 @@ public:
     VideoService(const VideoService&) = delete;
     VideoService& operator=(const VideoService&) = delete;
 
-    void register_routes(httplib::Server& server);
+    void register_routes(httplib::Server& server, std::string cors_origin = {});
     using MetricsCallback = std::function<void(const std::string&, const std::string&, int, double)>;
     void EnableMetrics(MetricsCallback callback);
 

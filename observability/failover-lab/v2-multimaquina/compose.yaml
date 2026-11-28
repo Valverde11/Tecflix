@@ -1,13 +1,15 @@
-# Ejecutar en macOS Docker Desktop. Los puertos son SOLO localhost del Mac.
+# En un segundo host, configura ambas direcciones y la interfaz privada.
 services:
   haproxy-v2:
     image: haproxy:3.2
+    restart: unless-stopped
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "tecflix-macos:${TECFLIX_MAC_ADDRESS:-host-gateway}"
+      - "tecflix-ubuntu:${TECFLIX_UBUNTU_ADDRESS:-192.168.64.2}"
     ports:
-      - "127.0.0.1:9281:9281"
-      - "127.0.0.1:9282:9282"
-      - "127.0.0.1:9283:9283"
-      - "127.0.0.1:9299:9299"
+      - "${TECFLIX_PROXY_BIND:-127.0.0.1}:${TECFLIX_PROXY_USERS_PORT:-9281}:9281"
+      - "${TECFLIX_PROXY_BIND:-127.0.0.1}:${TECFLIX_PROXY_METADATA_PORT:-9282}:9282"
+      - "${TECFLIX_PROXY_BIND:-127.0.0.1}:${TECFLIX_PROXY_STREAMING_PORT:-9283}:9283"
+      - "127.0.0.1:${TECFLIX_PROXY_STATS_PORT:-9299}:9299"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

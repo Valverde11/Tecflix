@@ -100,3 +100,6 @@ Tecflix es un sistema distribuido de streaming de video diseñado para la plataf
 - `TECFLIX_FFMPEG` permite indicar la ruta de FFmpeg cuando no está disponible en el `PATH`.
 - El código del API se divide entre `include/tecflix`, `src` y `CMakeLists.txt`; los artefactos locales de build y video se excluyen del control de versiones.
 - Se utiliza la cabecera cpp-httplib 0.62.0 ya instalada en `third_party/cpp-httplib`, sin descargar una segunda versión durante el build.
+- V2 comprueba un primario MongoDB en `/ready` y prueba escrituras de mayoría con tres miembros para distinguir una elección de la pérdida de quórum.
+- V2 prueba PostgreSQL síncrono con Patroni y etcd. Los clientes usan varios destinos de libpq y seleccionan una sesión de escritura.
+- V2 permite un único escritor de streaming por carpeta en el laboratorio POSIX y comprueba el relevo con datos HLS persistidos.

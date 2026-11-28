@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <httplib.h>
 
+#include <atomic>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -90,7 +91,8 @@ class HttpTestServer : public ::testing::Test {
   AuthService auth_{kAuthSecret, [] { return kNow; }};
   ServiceTokenVerifier service_tokens_{kServiceSecret};
   UserController controller_{users_, auth_, service_tokens_};
-  ApiServer server_{controller_, kCorsOrigin};
+  std::atomic<bool> storage_ready_{true};
+  ApiServer server_{controller_, kCorsOrigin, [this] { return storage_ready_.load(); }};
   int port_ = 0;
   std::thread listener_;
 };

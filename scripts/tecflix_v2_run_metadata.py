@@ -58,6 +58,8 @@ def tunneled_uri(uri):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--machine", choices=["macos", "ubuntu"], required=True)
+    parser.add_argument("--mongo-connection", choices=["configured", "tunnel"],
+                        help="Usar MONGO_URI tal cual o el túnel local. Por defecto Ubuntu usa el túnel.")
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--executable", default="build/metadata-mongo/metadata-service")
     parser.add_argument("--port", type=int, default=8082)
@@ -74,7 +76,8 @@ def main(argv=None):
             raise ValueError("AUTH_SECRET debe tener >= 32 bytes")
         if not env.get("MONGO_DB") or not env.get("MONGO_URI"):
             raise ValueError("MONGO_URI y MONGO_DB deben estar definidos")
-        if args.machine == "ubuntu":
+        connection = args.mongo_connection or ("tunnel" if args.machine == "ubuntu" else "configured")
+        if connection == "tunnel":
             env["MONGO_URI"] = tunneled_uri(env["MONGO_URI"])
         env["PORT"] = str(args.port)
         # Huella para comparar configuración ENTRE maquinas; nunca imprime el valor real.

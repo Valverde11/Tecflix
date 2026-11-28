@@ -2,15 +2,15 @@
 
 **Fecha:** 28 de noviembre de 2026. **Rama esperada:** `V2_Single_Point_Failure`. **Entornos:** macOS Apple Silicon (`arm64`) y Ubuntu VM (`aarch64`, `192.168.64.2`). **Mac accesible desde Ubuntu:** `192.168.64.1`. **Ruta del proyecto en Ubuntu:** `/home/tecflix/proyectos/Tecflix`.
 
-> **Alcance real.** Este paquete crea una ruta `/ready` para metadata que hace *ping* de MongoDB; agrega un HAProxy nuevo para las tres APIs, pruebas de failover de macOS↔Ubuntu y una carga GET limitada; incorpora compatibilidad de `libpqxx` 7/8. **No instala un replica set MongoDB, no replica PostgreSQL, no comparte archivos de streaming, ni elimina el punto único de fallo del HAProxy o del Mac físico.** Es un laboratorio y una base de código. Las pruebas reales deben ejecutarse en tus máquinas.
+> **Estado de V2.** La [bitácora de validación](BITACORA_TECFLIX_V2_HA.md) registra los laboratorios de MongoDB, PostgreSQL, streaming y entrada redundante. Las secciones de túnel de esta guía describen el despliegue original con un MongoDB en el Mac.
 
 ## 0. Qué incluye y qué NO modifica
 
-- C++ metadata: `/health` (liveness) sigue respondiendo 200 cuando vive el proceso. **Nuevo `GET /ready`** responde 200 solo cuando `VideoRepository::Ready()` verifica almacenamiento; para MongoDB realiza un `ping` real. Si la BD falla o la consulta arroja excepción responde `503 {"status":"unavailable"}` sin mostrar credenciales. Si el servicio se compiló con almacenamiento en memoria, devuelve 200, por lo que **esa opción no sirve como prueba de Mongo real**.
+- C++ metadata. `/health` comprueba que el proceso responde. `/ready` consulta `hello` en MongoDB y exige un primario apto para escritura. Ante un fallo devuelve HTTP 503 con un mensaje genérico. El build en memoria comprueba únicamente ese repositorio.
 - C++ usuarios: `#include <pqxx/version>` y alias condicionado a versión. Si ya existe, el aplicador lo reconoce sin duplicarlo.
 - Nuevo `observability/failover-lab/v2-multimaquina/` con `compose.yaml` + `haproxy.cfg`. Utiliza `9281/9282/9283` para usuarios/metadata/streaming y `9299` para estadísticas, sin tocar los laboratorios originales en `9081..9083`, `9182` o `9199`.
 - Scripts `tecflix_v2_run_metadata.py`, `tecflix_v2_failover_check.py`, `tecflix_v2_mongo_smoke.py`, `tecflix_v2_metadata_continuidad.py`, `tecflix_v2_load_probe.py`.
-- No crea ni cambia `.env`, no toca `build/`, no borra datos, no altera configuraciones de telemetría. Usa Python 3 estándar para arrancar las APIs; únicamente el *smoke* con `--verify-mongo` requiere `pymongo` en macOS.
+- Los laboratorios usan directorios o volúmenes desechables. El *smoke* con `--verify-mongo` requiere `pymongo` en macOS.
 
 ### Tabla de terminales
 
@@ -288,7 +288,7 @@ curl -i http://192.168.64.2:8082/ready
 python3 scripts/tecflix_v2_failover_check.py --service metadata --phase restore
 ```
 
-Si la VM cambió de IP, modifica el backend `ubuntu` en `haproxy.cfg` y el argumento `--ubuntu-host` del checker, y recrea el contenedor. No inventes IPs.
+Si la VM cambió de IP, ajusta `TECFLIX_UBUNTU_ADDRESS` para Compose y el argumento `--ubuntu-host` del checker, y recrea el contenedor. No inventes IPs.
 
 ## 4. Prueba adicional: detección de dependencia MongoDB (readiness)
 
@@ -332,7 +332,7 @@ python3 scripts/tecflix_v2_failover_check.py --service metadata --phase both
 python3 scripts/tecflix_v2_load_probe.py --label dos-backends --requests 100 --concurrency 10
 ```
 
-Compara `requests_per_second`, `latency_ms_p50`, `latency_ms_p95`, tasa de error y condiciones del entorno. Los reportes quedan en `load-tests/results/` (ignorados por Git). La mejora no es garantizada: ambos nodos comparten el mismo MongoDB/CPU/host físico.
+Compara `successful_requests_per_second` (HTTP 200/s), `latency_ms_p50`, `latency_ms_p95`, tasa de error y condiciones del entorno. Los reportes quedan en `load-tests/results/` (ignorados por Git). La mejora no es garantizada: ambos nodos comparten el mismo MongoDB/CPU/host físico.
 
 **No uses este script como prueba de carga de uploads de video**: la concurrencia real, límites y tasas deben medirse posteriormente con escenarios autenticados, múltiples niveles de concurrencia, datos representativos y métricas del dashboard.
 
@@ -391,3 +391,46 @@ Si el error aparece en CMake, comparte **las últimas 30-50 líneas** y el paso 
 Anota (tú o tu equipo) cada evidencia con fecha/hora, máquina, configuración, estado de procesos, comando, respuesta y limitación. Prepara capturas del panel `http://127.0.0.1:9299/stats` y las salidas del verificador (con y sin VM). Esta guía y los scripts son material técnico, **no texto para copiar al paper**: el enunciado oficial establece que el paper debe redactarse sin IA y que cada estudiante debe entender el código y justificarlo.
 
 **Lo que resta para eliminar SPOF de verdad:** replicación MongoDB con quórum y datos persistentes, PostgreSQL redundante, almacenamiento de streaming disponible para ambos nodos, balanceador/entrada redundante y pruebas de fallo de máquina independiente (la VM y el Mac comparten hardware), validación end-to-end web y carga/stress representativa.
+
+## Verificación del laboratorio después de actualizar los ejecutables
+
+Compila y despliega la nueva versión de usuarios en ambos nodos antes de actualizar HAProxy. El proxy consulta `/ready` en usuarios y metadata. En modo PostgreSQL, usuarios comprueba las tablas, la firma de la operación de cuotas y si la sesión permite escribir. Usa `PGCONNECT_TIMEOUT=3` en ambos servicios. En modo archivo, `/ready` solo indica que el proceso responde. Para dos nodos, configura ambos con `TECFLIX_USER_STORAGE=postgres` y el mismo primario. Consulta el catálogo desde el contenedor para verificar el volumen existente:
+
+```bash
+docker compose -f infraestructure/postgres-v2/compose.yaml exec -T postgres \
+  psql -X -w -U tecflix -d tecflix_v2 -c "SELECT current_database(), to_regclass('users'), to_regclass('quota_operations'), to_regprocedure('apply_quota_operation(bigint,text,bigint)');"
+```
+
+Si falta un objeto, conserva el volumen y revisa el esquema antes de aplicar una migración. Cambiar el healthcheck no modifica un volumen existente.
+
+### Comparación de carga sobre metadata
+
+Verifica el escenario con el checker del apartado 5. Usa el mismo catálogo, cliente, ruta y configuración en todas las corridas. En cada escenario ejecuta una petición de calentamiento y después tres repeticiones por nivel. Ajusta `escenario` a `un-backend` o `dos-backends` según el estado comprobado.
+
+```bash
+escenario=un-backend
+curl -fsS -o /dev/null 'http://127.0.0.1:9282/api/metadata/videos?page=1&page_size=20' && (
+  for nivel in 1 5 10 20 40 60; do
+    for repeticion in 1 2 3; do
+      python3 scripts/tecflix_v2_load_probe.py --label "${escenario}-c${nivel}-r${repeticion}" \
+        --concurrency "$nivel" --requests 600
+    done
+  done
+)
+```
+
+Comprueba `successful_by_backend` en cada JSON. Descarta como comparación topológica una corrida que no muestre el conjunto esperado. Por nivel, compara la mediana de las tres tasas de HTTP 200/s, el p95 de las respuestas exitosas y los conteos de errores. Registra CPU, memoria y duración junto a los resultados. Busca el primer nivel donde aumentar concurrencia deja de aumentar el rendimiento mientras sube el p95, o aparecen rechazos reproducibles. Si todos los niveles pasan sin degradación, informa el máximo ensayado y deja el límite superior abierto. Una corrida con cero éxitos no proporciona latencia de servicio.
+
+### Segundo punto de entrada y conexiones de datos
+
+El mismo Compose puede ejecutarse en el segundo equipo. En ese equipo fija `TECFLIX_MAC_ADDRESS` y `TECFLIX_UBUNTU_ADDRESS` a las IP privadas de las APIs alcanzables desde su contenedor. `TECFLIX_PROXY_BIND` selecciona la interfaz privada donde el cliente llegará al proxy (por defecto, loopback). Las estadísticas permanecen en loopback. Comprueba cada entrada con el verificador y `--lb-url`. Para demostrar continuidad desde el navegador aún se requiere una dirección estable con conmutación entre proxies, accesible desde la web.
+
+Con MongoDB replicado, inicia metadata con `--mongo-connection configured` en ambos nodos. Configura la URI con varios miembros iniciales, `replicaSet` y `w=majority`. El modo predeterminado de Ubuntu conserva el túnel original. Verifica que ambas APIs alcancen los nombres anunciados por todos los miembros. La promoción de PostgreSQL y el quórum de MongoDB requieren validación en la topología elegida.
+
+Streaming reconstruye el índice de videos y la cola de FFmpeg al arrancar. Una carpeta compartida por sí sola no coordina dos procesos escritores. Para una demostración activo/pasivo, el relevo requiere almacenamiento replicado, exclusión del escritor anterior y reapertura del almacenamiento por el proceso de respaldo. Comprueba reproducción de un video previo, recuperación de una subida interrumpida y contabilización única de su cuota antes de declarar continuidad.
+
+En macOS y Linux, `TECFLIX_STREAMING_EXCLUSIVE_STORAGE=1` hace que el proceso adquiera un bloqueo exclusivo antes de abrir `TECFLIX_STORAGE`. FFmpeg conserva el descriptor durante la transcodificación. Configura la opción en ambos procesos del laboratorio y conserva el archivo de bloqueo mientras alguno use la carpeta. El proxy publica un escritor. Para usar dos equipos hace falta confirmar que el almacenamiento replicado y el mecanismo de exclusión impidan escrituras concurrentes incluso durante una partición.
+
+Para PostgreSQL con Patroni, configura la lista de destinos en `PGHOST` y `PGPORT` y usa `PGTARGETSESSIONATTRS=read-write` en ambas APIs de usuarios. Libpq vuelve a elegir destino al abrir cada conexión. Usa `PGCONNECT_TIMEOUT` para acotar el tiempo por destino. El Compose de laboratorio crea un clúster separado y la prueba usa los SQL versionados solo sobre ese clúster.
+
+El stack de observabilidad acepta `TECFLIX_MAC_ADDRESS` y `TECFLIX_UBUNTU_ADDRESS` para las sondas. Configura `OTEL_EXPORTER_OTLP_ENDPOINT` y `TECFLIX_OTLP_SECONDARY_ENDPOINT` en los procesos C++ para exportar a dos Collectors. Cada destino usa su propio lector y puede recibir métricas aunque el otro esté caído. Cada Prometheus conserva su historial. Si consultas ambas fuentes juntas, deduplica las series por identidad del proceso antes de sumar.

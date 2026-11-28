@@ -9,6 +9,7 @@ namespace tecflix::users {
 // between HTTP worker threads.
 class PostgresUserRepository final : public IUserRepository, public IQuotaStore, public IProfileStore {
  public:
+  static bool Ready();
   CreateResult Create(const UserRecord& draft) override;
   std::optional<UserRecord> FindById(std::uint64_t id) override;
   std::optional<UserRecord> FindByUsername(const std::string& username) override;

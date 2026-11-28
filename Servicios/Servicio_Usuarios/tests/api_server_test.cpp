@@ -24,6 +24,21 @@ TEST_F(ApiServerTest, HealthReturnsOkStatus) {
             nlohmann::json({{"status", "ok"}}));
 }
 
+TEST_F(ApiServerTest, ReadinessTracksStorageAvailability) {
+  auto client = Client();
+  storage_ready_ = false;
+  const auto unavailable = client.Get("/ready");
+  ASSERT_TRUE(unavailable);
+  EXPECT_EQ(unavailable->status, 503);
+  const auto live = client.Get("/health");
+  ASSERT_TRUE(live);
+  EXPECT_EQ(live->status, 200);
+  storage_ready_ = true;
+  const auto recovered = client.Get("/ready");
+  ASSERT_TRUE(recovered);
+  EXPECT_EQ(recovered->status, 200);
+}
+
 TEST_F(ApiServerTest, UnknownRouteReturnsNotFound) {
   auto client = Client();
   const auto response = client.Get("/no-existe");

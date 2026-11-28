@@ -4,6 +4,9 @@ services:
     command: ["--config.file=/etc/blackbox_exporter/config.yml"]
     volumes:
       - ./blackbox.yaml:/etc/blackbox_exporter/config.yml:ro
+    extra_hosts:
+      - "tecflix-macos:${TECFLIX_MAC_ADDRESS:-host-gateway}"
+      - "tecflix-ubuntu:${TECFLIX_UBUNTU_ADDRESS:-192.168.64.2}"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.120.0
@@ -11,8 +14,8 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
+      - "${TECFLIX_OBSERVABILITY_BIND:-127.0.0.1}:${TECFLIX_OTLP_GRPC_PORT:-4317}:4317"
+      - "${TECFLIX_OBSERVABILITY_BIND:-127.0.0.1}:${TECFLIX_OTLP_HTTP_PORT:-4318}:4318"
 
   prometheus:
     image: prom/prometheus:v3.2.1
@@ -23,7 +26,7 @@ services:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "${TECFLIX_OBSERVABILITY_BIND:-127.0.0.1}:${TECFLIX_PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - blackbox-exporter
 
@@ -34,7 +37,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${TECFLIX_OBSERVABILITY_BIND:-127.0.0.1}:${TECFLIX_GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
 

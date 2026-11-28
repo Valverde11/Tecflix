@@ -21,7 +21,8 @@ constexpr const char* kPreflightCacheSeconds = "600";
 
 }  // namespace
 
-ApiServer::ApiServer(UserController& users, const std::string& cors_origin) {
+ApiServer::ApiServer(UserController& users, const std::string& cors_origin,
+                     std::function<bool()> ready) {
   ConfigureCors(cors_origin);
   server_.set_payload_max_length(kMaxBodyBytes);
   server_.set_exception_handler([](const httplib::Request&,
@@ -34,6 +35,18 @@ ApiServer::ApiServer(UserController& users, const std::string& cors_origin) {
         ApiErrors::FillEmptyBody(response);
       });
   health_controller_.RegisterRoutes(server_);
+  server_.Get("/ready", [ready = std::move(ready)](const httplib::Request&,
+                                                   httplib::Response& response) {
+    bool available = false;
+    try {
+      available = !ready || ready();
+    } catch (const std::exception&) {
+      // A lost database connection makes this instance unavailable.
+    }
+    response.status = available ? 200 : 503;
+    response.set_content(available ? R"({"status":"ready"})" : R"({"status":"unavailable"})",
+                         "application/json");
+  });
   users.RegisterRoutes(server_);
 }
 

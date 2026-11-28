@@ -2,7 +2,9 @@
 
 python3 -m unittest discover -s tests -p 'test_tecflix_v2_tools.py' -v
 """
+import contextlib
 import importlib.util
+import io
 import tempfile
 from pathlib import Path
 import unittest
@@ -67,8 +69,30 @@ class ToolsTests(unittest.TestCase):
         self.assertEqual(counts, {})
         self.assertEqual(len(errors), 4)
 
+    def test_load_excludes_fast_failures_from_success_metrics(self):
+        stats = self.load.summarize([(None, None, 1), (503, None, 2),
+                                     (200, "ubuntu", 100)], 2)
+        self.assertEqual(stats["successful_requests_per_second"], 0.5)
+        self.assertEqual(stats["latency_ms_p95"], 100)
+        self.assertEqual(stats["successful_by_backend"], {"ubuntu": 1})
+        self.assertEqual(stats["status_counts"], {"error_red": 1, "503": 1, "200": 1})
+
+    def test_unavailable_proxy_skips_load(self):
+        with patch("sys.argv", ["probe", "--label", "test"]), \
+             patch.object(self.load, "one", return_value=(503, None, 2)), \
+             patch.object(self.load, "ThreadPoolExecutor") as pool, \
+             contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as result:
+            self.load.main()
+        self.assertEqual(result.exception.code, 1)
+        pool.assert_not_called()
+
+    def test_load_all_failed(self):
+        stats = self.load.summarize([(None, None, 1)], 1)
+        self.assertEqual(stats["successful_requests_per_second"], 0)
+        self.assertIsNone(stats["latency_ms_mean"])
+
     def test_load_percentile(self):
-        self.assertEqual(self.load.percentile([1, 2, 3, 4, 5], .95), 4)
+        self.assertEqual(self.load.percentile([1, 2, 3, 4, 5], .95), 5)
         self.assertIsNone(self.load.percentile([], .95))
 
 

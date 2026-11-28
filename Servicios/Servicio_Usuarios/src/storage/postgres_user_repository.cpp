@@ -58,12 +58,12 @@ void FromHex(std::string_view hex, std::array<std::uint8_t, N>& bytes) {
   }
 }
 #if PQXX_VERSION_MAJOR >= 8
-using PostgresRow = pqxx:row_ref;
+using PostgresRow = pqxx::row_ref;
 #else
 using PostgresRow = pqxx::row;
 #endif
 
-UserRecord ReadRecord(const PostgresRow::row_ref& row) {
+UserRecord ReadRecord(const PostgresRow& row) {
   UserRecord record;
   record.id = static_cast<std::uint64_t>(row["id"].as<std::int64_t>());
   record.username = row["username"].as<std::string>();
@@ -102,6 +102,17 @@ WriteStatus UniqueStatus(const pqxx::unique_violation& error) {
 }
 
 }  // namespace
+
+bool PostgresUserRepository::Ready() {
+  pqxx::connection connection;
+  pqxx::work tx(connection);
+  const auto result = tx.exec(
+      "SELECT to_regclass('users') IS NOT NULL "
+      "AND to_regclass('quota_operations') IS NOT NULL "
+      "AND to_regprocedure('apply_quota_operation(bigint,text,bigint)') IS NOT NULL "
+      "AND current_setting('transaction_read_only') = 'off'");
+  return result[0][0].as<bool>();
+}
 
 CreateResult PostgresUserRepository::Create(const UserRecord& draft) {
   ValidateRecord(draft);

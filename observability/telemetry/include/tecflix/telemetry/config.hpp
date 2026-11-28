@@ -9,6 +9,7 @@ struct Config {
     std::string service_name;   // quíen soy: "user-service", "metadata-service"...
     std::string instance_id;    // cuál copia soy: "maquina-A", "maquina-B"
     std::string otlp_endpoint;  // dónde está el Collector, sin la ruta final
+    std::string secondary_otlp_endpoint{};
 };
 
 // Lee la configuración del entorno; si falta algo, usa valores por defecto
@@ -16,4 +17,5 @@ Config ConfigFromEnv(const std::string& default_service_name);
 
 // Construye la URL completa a la que se envían las métricas
 std::string MetricsURL(const Config& config);   // "Dame la ficha sin copiarla (&) y te prometo no modificarla (const)"
+std::string MetricsURL(std::string base);
 }   // namespace tecflix::telemetry

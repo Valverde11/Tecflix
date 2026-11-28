@@ -54,7 +54,7 @@ def main(argv=None):
     if args.samples < 4 or args.timeout < 3:
         parser.error("--samples >= 4 y --timeout >= 3 son obligatorios")
     backend_port, proxy_port = PORTS[args.service]
-    path = "/ready" if args.service == "metadata" else "/health"
+    path = "/ready" if args.service in ("users", "metadata") else "/health"
     lb = args.lb_url or f"http://127.0.0.1:{proxy_port}"
     mac = f"http://{args.mac_host}:{backend_port}{path}"
     ubuntu = f"http://{args.ubuntu_host}:{backend_port}{path}"

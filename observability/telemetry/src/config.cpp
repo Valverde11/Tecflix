@@ -19,11 +19,15 @@ namespace tecflix::telemetry {
             EnvOr("OTEL_SERVICE_NAME", default_service_name),               // estándar de OpenTelemetry
             EnvOr("SERVICE_INSTANCE_ID", "instance-1"),                     // Guardamos la dirección base en http://localhost:4318
             EnvOr("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),   // estándar de OpenTelemetry
+            EnvOr("TECFLIX_OTLP_SECONDARY_ENDPOINT", ""),
         };
     }
 
-    std::string MetricsURL(const Config& config) {      // Le agrega /v1/metrics, la ruta exacta donde el Collector escucha métricas
-        std::string base = config.otlp_endpoint;
+    std::string MetricsURL(const Config& config) {
+        return MetricsURL(config.otlp_endpoint);
+    }
+
+    std::string MetricsURL(std::string base) {
         while (!base.empty() && base.back() == '/') {
             base.pop_back();    // quita barras finales para no duplicarlas
         }

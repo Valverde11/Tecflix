@@ -32,6 +32,7 @@ int main() {
   try {
     const auto config = Config::FromProcessEnvironment();
 
+    std::function<bool()> ready;
     std::unique_ptr<IUserRepository> repository;
     std::unique_ptr<QuotaOperationJournal> quota_journal;
     IQuotaStore* quota_store = nullptr;
@@ -48,8 +49,8 @@ int main() {
       quota_store = postgres.get();
       profile_store = postgres.get();
       repository = std::move(postgres);
-      // Fail early if DB connection is unavailable.
-      static_cast<void>(repository->FindById(0));
+      // El proxy debe poder consultar /ready durante la elección o migración.
+      ready = PostgresUserRepository::Ready;
 #else
       throw std::runtime_error("user-service fue compilado sin soporte PostgreSQL");
 #endif
@@ -65,7 +66,7 @@ int main() {
     tecflix::telemetry::Telemetry telemetry(
         tecflix::telemetry::ConfigFromEnv("user-service"));
 #endif
-    ApiServer server(controller, config.CorsOrigin());
+    ApiServer server(controller, config.CorsOrigin(), ready);
 #ifdef TECFLIX_REAL_TELEMETRY
     server.EnableMetrics([&telemetry](const std::string& method, const std::string& route,
                                       int status, double seconds) {

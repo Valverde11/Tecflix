@@ -10,7 +10,10 @@ import { defineConfig, devices } from '@playwright/test';
  * la real: se reutiliza la que ya corra en USERS_API_URL o, si se da E2E_USERS_SERVICE_COMMAND,
  * Playwright la arranca con datos y secretos nuevos.
  */
-const WEB_PORT = 5173;
+const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? '5173');
+if (!Number.isInteger(WEB_PORT) || WEB_PORT < 1 || WEB_PORT > 65_535) {
+  throw new Error('E2E_WEB_PORT debe ser un puerto TCP válido');
+}
 const WEB_URL = `http://localhost:${String(WEB_PORT)}`;
 const USERS_API_URL = process.env.E2E_USERS_API_URL ?? 'http://localhost:8081';
 const METADATA_API_URL = process.env.E2E_METADATA_API_URL ?? 'http://localhost:8082';
@@ -72,6 +75,11 @@ export default defineConfig({
     baseURL: WEB_URL,
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], channel: process.env.E2E_BROWSER_CHANNEL },
+    },
+  ],
   webServer: [...usersServer, webServer],
 });

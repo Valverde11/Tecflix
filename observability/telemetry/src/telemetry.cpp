@@ -67,15 +67,6 @@ namespace tecflix::telemetry {
             };
         
         std::shared_ptr<metrics_sdk::MeterProvider> StartMetrics(const Config& config) {
-            otlp::OtlpHttpMetricExporterOptions exporter_options;
-            exporter_options.url = MetricsURL(config);
-            auto exporter = otlp::OtlpHttpMetricExporterFactory::Create(exporter_options);
-
-            metrics_sdk::PeriodicExportingMetricReaderOptions reader_options;
-            reader_options.export_interval_millis = std::chrono::milliseconds(1000);
-            reader_options.export_timeout_millis = std::chrono::milliseconds(500);
-            auto reader = metrics_sdk::PeriodicExportingMetricReaderFactory::Create(std::move(exporter), reader_options);
-
             auto resource = opentelemetry::sdk::resource::Resource::Create({
                 {"service.name", config.service_name.c_str()},
                 {"service.instance.id", config.instance_id.c_str()}    
@@ -96,7 +87,24 @@ namespace tecflix::telemetry {
             );
 
             auto context = metrics_sdk::MeterContextFactory::Create(std::move(views), resource);
-            context->AddMetricReader(std::move(reader));
+            const auto add_reader = [&context](const std::string& url) {
+                otlp::OtlpHttpMetricExporterOptions exporter_options;
+                exporter_options.url = url;
+                exporter_options.timeout = std::chrono::milliseconds(500);
+                auto exporter = otlp::OtlpHttpMetricExporterFactory::Create(exporter_options);
+
+                metrics_sdk::PeriodicExportingMetricReaderOptions reader_options;
+                reader_options.export_interval_millis = std::chrono::milliseconds(1000);
+                reader_options.export_timeout_millis = std::chrono::milliseconds(500);
+                context->AddMetricReader(metrics_sdk::PeriodicExportingMetricReaderFactory::Create(
+                    std::move(exporter), reader_options));
+            };
+            const auto primary = MetricsURL(config);
+            add_reader(primary);
+            if (!config.secondary_otlp_endpoint.empty()) {
+                const auto secondary = MetricsURL(config.secondary_otlp_endpoint);
+                if (secondary != primary) add_reader(secondary);
+            }
 
             auto provider = metrics_sdk::MeterProviderFactory::Create(std::move(context));
             return std::shared_ptr<metrics_sdk::MeterProvider>(std::move(provider));

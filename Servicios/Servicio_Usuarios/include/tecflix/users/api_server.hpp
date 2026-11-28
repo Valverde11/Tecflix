@@ -24,7 +24,8 @@ class ApiServer {
 
   // users debe vivir más que este servidor. cors_origin es el único origen web
   // que el navegador dejará llamar a esta API.
-  ApiServer(UserController& users, const std::string& cors_origin);
+  ApiServer(UserController& users, const std::string& cors_origin,
+            std::function<bool()> ready = {});
 
   ApiServer(const ApiServer&) = delete;
   ApiServer& operator=(const ApiServer&) = delete;

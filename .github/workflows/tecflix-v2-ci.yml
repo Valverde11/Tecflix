@@ -1,0 +1,92 @@
+name: Tecflix V2 CI
+
+on:
+  push:
+    branches: [V2_Single_Point_Failure]
+  pull_request:
+    branches: [V2_Single_Point_Failure, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tecflix-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: Aplicacion_Web/package-lock.json
+      - name: Install dependencies
+        run: |
+          brew tap mongodb/brew
+          brew install mongodb-community@8.0 mongosh mongo-cxx-driver postgresql@17 libpqxx ffmpeg
+          echo "$(brew --prefix mongodb-community@8.0)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
+      - name: Build with database support
+        run: |
+          coverage='-fprofile-instr-generate -fcoverage-mapping'
+          cmake -S Servicios/Servicio_Usuarios -B build/v2/users -DCMAKE_BUILD_TYPE=Release \
+            -DUSER_SERVICE_ENABLE_POSTGRES=ON -DTECFLIX_REAL_TELEMETRY=OFF \
+            -DCMAKE_CXX_FLAGS="$coverage" \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix libpqxx);$(brew --prefix libpq)"
+          cmake -S tecflix-metadata/services/metadata-service -B build/v2/metadata \
+            -DCMAKE_BUILD_TYPE=Release -DMETADATA_ENABLE_MONGO=ON -DTECFLIX_REAL_TELEMETRY=OFF \
+            -DCMAKE_CXX_FLAGS="$coverage" \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix mongo-cxx-driver)"
+          cmake -S . -B build/v2/streaming -DCMAKE_BUILD_TYPE=Release -DTECFLIX_REAL_TELEMETRY=OFF \
+            -DCMAKE_CXX_FLAGS="$coverage"
+          for service in users metadata streaming; do
+            cmake --build "build/v2/$service" --parallel 4
+          done
+          bash scripts/tecflix_v2_cpp_coverage.sh build/v2/users build/v2/metadata build/v2/streaming
+          python3 -m unittest discover -s tests -p 'test_tecflix_v2_tools.py'
+      - name: Web build and coverage
+        working-directory: Aplicacion_Web
+        run: |
+          npm ci
+          npm run build
+          npm run coverage
+          npx playwright install chromium
+      - name: Verify MongoDB primary loss and recovery
+        run: python3 scripts/tecflix_v2_mongo_replica_lab.py --metadata build/v2/metadata/metadata-service
+      - name: Verify users failover, quota and real browser playback
+        shell: bash
+        run: |
+          set -euo pipefail
+          pg_dir="$(mktemp -d "${RUNNER_TEMP}/tecflix-pg.XXXXXX")"
+          db_port=55432
+          export PGHOST=127.0.0.1 PGPORT="$db_port" PGUSER=tecflix PGDATABASE=tecflix_v2
+          export TECFLIX_DISPOSABLE_DATABASES=1
+          initdb --no-instructions -A trust -U "$PGUSER" -D "$pg_dir"
+          trap 'pg_ctl -D "$pg_dir" -m fast -w stop' EXIT
+          pg_ctl -D "$pg_dir" -l "$pg_dir/server.log" -o "-h 127.0.0.1 -p $db_port" -w start
+          createdb "$PGDATABASE"
+          psql -X -v ON_ERROR_STOP=1 -f infraestructure/postgres-v2/init/001_schema.sql \
+            -f infraestructure/postgres-v2/init/002_quota_transaction.sql
+          python3 scripts/tecflix_v2_functional_lab.py --users build/v2/users/user-service \
+            --metadata build/v2/metadata/metadata-service --streaming build/v2/streaming/tecflix-api
+      - name: Archive C++ coverage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tecflix-v2-cpp-coverage
+          path: build/v2/*/coverage.txt
+          if-no-files-found: warn
+  postgres-ha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Verify promotion and quota durability
+        run: bash scripts/tecflix_v2_postgres_ha_lab.sh

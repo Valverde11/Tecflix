@@ -168,7 +168,7 @@ void VideoService::EnableMetrics(MetricsCallback callback) {
         std::move(callback));
 }
 
-void VideoService::register_routes(httplib::Server& server) {
+void VideoService::register_routes(httplib::Server& server, std::string cors_origin) {
     if (metrics_tracker_) {
         server.set_logger([this](const httplib::Request& req, const httplib::Response& res) {
             metrics_tracker_->End(req, res);
@@ -179,13 +179,14 @@ void VideoService::register_routes(httplib::Server& server) {
     });
 
     server.set_pre_routing_handler(
-        [this](const httplib::Request& req, httplib::Response& res) {
+        [this, cors_origin = std::move(cors_origin)](const httplib::Request& req,
+                                                     httplib::Response& res) {
             if (metrics_tracker_) metrics_tracker_->Begin(req);
             const std::string origin = req.get_header_value("Origin");
     
-            const bool allowed =
-                origin == "http://localhost:5173" ||
-                origin == "http://127.0.0.1:5173";
+            const bool allowed = cors_origin.empty()
+                ? origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173"
+                : origin == cors_origin;
     
             if (allowed) {
                 res.set_header("Access-Control-Allow-Origin", origin);

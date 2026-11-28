@@ -10,11 +10,36 @@
 #include <thread>
 #include <unordered_map>
 
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 namespace {
 void require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
     std::cout << "[OK] " << message << '\n';
 }
+struct ClosedPort {
+    const int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    ~ClosedPort() {
+        if (socket_fd >= 0) close(socket_fd);
+    }
+
+    int bind_without_listening() const {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t size = sizeof(address);
+        if (socket_fd < 0 ||
+            bind(socket_fd, reinterpret_cast<const sockaddr*>(&address), size) != 0 ||
+            getsockname(socket_fd, reinterpret_cast<sockaddr*>(&address), &size) != 0) {
+            throw std::runtime_error("No fue posible reservar puerto sin escucha");
+        }
+        return ntohs(address.sin_port);
+    }
+};
+
 struct FakeQuotaServer {
     httplib::Server server;
     std::thread worker;
@@ -83,8 +108,9 @@ int main() {
                 "Liberacion con ID independiente");
         require(client.Apply(1, "video-abc:release", -5000).used_bytes == 0,
                 "Reintento de liberacion no duplica operacion");
-        // Un puerto no escuchando simula un problema de red: NO es un rechazo definitivo.
-        require(tecflix::QuotaClient("127.0.0.1", fake.port + 1, "test-service-secret")
+        // Reservar un puerto sin escucha evita llegar a otro servidor de CTest.
+        const ClosedPort closed_port;
+        require(tecflix::QuotaClient("127.0.0.1", closed_port.bind_without_listening(), "test-service-secret")
                     .Apply(1, "video-ghi:reserve", 500).outcome == Outcome::uncertain,
                 "Fallo de red se marca como resultado incierto");
         std::cout << "QuotaClientHttp passed\n";

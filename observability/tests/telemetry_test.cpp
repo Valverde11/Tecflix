@@ -17,12 +17,14 @@ TEST(ConfigFromEnv, UsesDefaultWhenVariablesAreNotDefined) {
     ScopedEnv a("OTEL_SERVICE_NAME", nullptr);
     ScopedEnv b("SERVICE_INSTANCE_ID", nullptr);
     ScopedEnv c("OTEL_EXPORTER_OTLP_ENDPOINT", nullptr);
+    ScopedEnv d("TECFLIX_OTLP_SECONDARY_ENDPOINT", nullptr);
 
     const Config config = ConfigFromEnv("mi-servicio");
 
     EXPECT_EQ(config.service_name, "mi-servicio");
     EXPECT_EQ(config.instance_id, "instance-1");
     EXPECT_EQ(config.otlp_endpoint, "http://localhost:4318");
+    EXPECT_TRUE(config.secondary_otlp_endpoint.empty());
 }
 
 TEST(ConfigFromEnv, UsesDefaultsWhenVariablesAreEmpty) {
@@ -41,12 +43,14 @@ TEST(ConfigFromEnv, ReadsValuesFromEnvironment) {
     ScopedEnv a("OTEL_SERVICE_NAME", "api-prueba");
     ScopedEnv b("SERVICE_INSTANCE_ID", "maquina-A");
     ScopedEnv c("OTEL_EXPORTER_OTLP_ENDPOINT", "http://10.0.0.5:4318");
+    ScopedEnv d("TECFLIX_OTLP_SECONDARY_ENDPOINT", "http://10.0.0.6:4318");
 
     const Config config = ConfigFromEnv("ignorado");
 
     EXPECT_EQ(config.service_name, "api-prueba");
     EXPECT_EQ(config.instance_id, "maquina-A");
     EXPECT_EQ(config.otlp_endpoint, "http://10.0.0.5:4318");
+    EXPECT_EQ(config.secondary_otlp_endpoint, "http://10.0.0.6:4318");
 }
 
 TEST(MetricsURL, HandlesEndpointMadeOnlyOfSlashes) {

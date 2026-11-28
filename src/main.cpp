@@ -7,15 +7,44 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+#endif
+
 namespace {
 
 constexpr std::uint64_t kMaxUploadBytes = 2ULL * 1024 * 1024 * 1024;
+
+#ifndef _WIN32
+class StorageWriterLock {
+public:
+    ~StorageWriterLock() {
+        if (fd_ >= 0) close(fd_);
+    }
+
+    bool acquire(const std::filesystem::path& storage) {
+        std::error_code error;
+        std::filesystem::create_directories(storage, error);
+        if (error) return false;
+        // FFmpeg inherits this descriptor. After an API crash the lock stays
+        // held until any surviving transcoder has stopped writing.
+        fd_ = open((storage / ".tecflix-writer.lock").c_str(), O_CREAT | O_RDWR, 0600);
+        return fd_ >= 0 && flock(fd_, LOCK_EX | LOCK_NB) == 0;
+    }
+
+private:
+    int fd_ = -1;
+};
+#endif
 
 std::string environment_variable(const char* name, const char* fallback) {
 #ifdef _WIN32
@@ -87,6 +116,19 @@ int main() {
         }
         metadata_port = static_cast<int>(parsed);
     }
+#ifndef _WIN32
+    StorageWriterLock writer_lock;
+    if (environment_variable("TECFLIX_STREAMING_EXCLUSIVE_STORAGE", "0") == "1" &&
+        !writer_lock.acquire(storage)) {
+        std::cerr << "No se pudo obtener el bloqueo exclusivo del almacenamiento de streaming\n";
+        return 1;
+    }
+#else
+    if (environment_variable("TECFLIX_STREAMING_EXCLUSIVE_STORAGE", "0") == "1") {
+        std::cerr << "El bloqueo exclusivo de streaming requiere macOS o Linux\n";
+        return 1;
+    }
+#endif
     tecflix::VideoService videos(storage, worker_count,
                                  std::move(transcoder), validator, quota_client,
                                  metadata_host, metadata_port);
@@ -102,7 +144,7 @@ int main() {
     httplib::Server server;
     server.set_payload_max_length(kMaxUploadBytes);
     server.new_task_queue = [] { return new httplib::ThreadPool(8); };
-    videos.register_routes(server);
+    videos.register_routes(server, environment_variable("CORS_ORIGIN", ""));
 
     const auto port = server_port();
     std::cout << "Tecflix API listening on 0.0.0.0:" << port << '\n';

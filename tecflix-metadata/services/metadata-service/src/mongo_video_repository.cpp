@@ -175,13 +175,13 @@ MongoVideoRepository::MongoVideoRepository(const std::string& uri,
 
 MongoVideoRepository::~MongoVideoRepository() = default;
 
-// ping real a MongoDB: si falla, /ready responde 503 y HAProxy deja de enviar
-// nuevas peticiones a esta instancia. El controlador captura las excepciones.
+// Las rutas de escritura necesitan un primario. El controlador convierte los
+// errores de selección de servidor en HTTP 503.
 bool MongoVideoRepository::Ready() const {
   const auto client = impl_->pool.acquire();
-  const auto command = ToBsonText(R"({"ping":1})");
-  static_cast<void>((*client)[impl_->database].run_command(command.view()));
-  return true;
+  const auto command = ToBsonText(R"({"hello":1})");
+  const auto reply = (*client)["admin"].run_command(command.view());
+  return json::parse(bsoncxx::to_json(reply.view())).value("isWritablePrimary", false);
 }
 
 bool MongoVideoRepository::Insert(const Video& video) {

@@ -1,0 +1,82 @@
+# Clúster desechable de laboratorio. Todos los miembros comparten un host.
+x-etcd-env: &etcd-env
+  ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+  ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+  ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+  ETCD_INITIAL_CLUSTER_TOKEN: tecflix-lab
+  ETCD_DATA_DIR: /lab
+x-etcd: &etcd
+  image: quay.io/coreos/etcd:v3.5.21
+  entrypoint: [/usr/local/bin/etcd]
+x-pg-env: &pg-env
+  PATRONI_SUPERUSER_PASSWORD: ${TECFLIX_LAB_PG_PASSWORD:?Genera una clave desechable}
+  PATRONI_REPLICATION_PASSWORD: ${TECFLIX_LAB_REPLICATION_PASSWORD:?Genera una clave desechable}
+x-pg: &pg
+  build: .
+  image: tecflix-patroni-lab:pg17
+  ports:
+    - "127.0.0.1::5432"
+    - "127.0.0.1::8008"
+  depends_on: [etcd1, etcd2, etcd3]
+services:
+  etcd1:
+    <<: *etcd
+    volumes: ["etcd1:/lab"]
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd1
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd1:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd1:2380
+  etcd2:
+    <<: *etcd
+    volumes: ["etcd2:/lab"]
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd2
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd2:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd2:2380
+  etcd3:
+    <<: *etcd
+    volumes: ["etcd3:/lab"]
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd3
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd3:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd3:2380
+  pg1:
+    <<: *pg
+    volumes:
+      - ./patroni.yaml:/etc/patroni.yaml:ro
+      - pg1:/var/lib/postgresql/data
+    environment:
+      <<: *pg-env
+      PATRONI_NAME: pg1
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg1:5432
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg1:8008
+  pg2:
+    <<: *pg
+    volumes:
+      - ./patroni.yaml:/etc/patroni.yaml:ro
+      - pg2:/var/lib/postgresql/data
+    environment:
+      <<: *pg-env
+      PATRONI_NAME: pg2
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg2:5432
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg2:8008
+  pg3:
+    <<: *pg
+    volumes:
+      - ./patroni.yaml:/etc/patroni.yaml:ro
+      - pg3:/var/lib/postgresql/data
+    environment:
+      <<: *pg-env
+      PATRONI_NAME: pg3
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg3:5432
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg3:8008
+volumes:
+  etcd1:
+  etcd2:
+  etcd3:
+  pg1:
+  pg2:
+  pg3:
