@@ -59,6 +59,21 @@ target_link_libraries(user_service_core
         user_service_warnings
 )
 
+# PBKDF2 con OpenSSL si está instalado (usa SHA-NI, ~4.5x más rápido en x86); si no,
+# se queda mbedTLS. Ambos dan el mismo hash, ver src/security/password_hasher.cpp.
+# En macOS con Homebrew puede requerir -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3).
+option(USER_SERVICE_USE_OPENSSL "Calcular PBKDF2 con OpenSSL si está disponible" ON)
+if(USER_SERVICE_USE_OPENSSL)
+    find_package(OpenSSL QUIET COMPONENTS Crypto)
+endif()
+if(USER_SERVICE_USE_OPENSSL AND OpenSSL_FOUND)
+    target_link_libraries(user_service_core PRIVATE OpenSSL::Crypto)
+    target_compile_definitions(user_service_core PRIVATE TECFLIX_USE_OPENSSL_PBKDF2=1)
+    message(STATUS "PBKDF2: OpenSSL ${OPENSSL_VERSION}")
+else()
+    message(STATUS "PBKDF2: mbedTLS (OpenSSL no encontrado o desactivado)")
+endif()
+
 option(TECFLIX_REAL_TELEMETRY "Exportar métricas reales de usuarios a OTLP" ON)
 if(TECFLIX_REAL_TELEMETRY)
     add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../observability/telemetry"

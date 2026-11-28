@@ -1,0 +1,4 @@
+run,service,method,route,requests,avg_ms,p50_ms,p95_ms,p99_ms,errors_5xx
+login_v8,user-service,POST,/api/auth/login,2135,237.01,234.11,417.9,483.58,0
+login_v32,user-service,POST,/api/auth/login,2889,796.96,778.28,1000.0,1000.0,0
+register_v8,user-service,POST,/api/users,2075,240.47,237.01,425.67,485.13,0

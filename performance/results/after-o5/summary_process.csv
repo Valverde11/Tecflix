@@ -1,0 +1,10 @@
+run,service,cpu_avg_pct,rss_max_mb
+login_v8,users,796.8,17.9
+login_v8,metadata,0.1,15.2
+login_v8,streaming,0.1,12.1
+login_v32,users,1489.7,19.1
+login_v32,metadata,0.1,15.4
+login_v32,streaming,0.1,12.1
+register_v8,users,798.0,19.8
+register_v8,metadata,0.1,15.4
+register_v8,streaming,0.1,12.1

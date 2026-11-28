@@ -2,7 +2,7 @@
 """Compares two result folders produced by run_baseline.sh + summarize_results.py.
 
     python3 performance/scripts/compare_results.py performance/results/baseline-v1 \
-        performance/results/after-o1 [--route /api/metadata/videos]
+        performance/results/after-o1 [--route /api/metadata/videos] [--method GET]
 
 Prints, for every run present in both folders, the k6 numbers side by side and the
 server-side average of one route (default: the catalog). Writes the same rows to
@@ -37,6 +37,7 @@ def main():
     parser.add_argument("before")
     parser.add_argument("after")
     parser.add_argument("--route", default="/api/metadata/videos")
+    parser.add_argument("--method", default="GET")
     args = parser.parse_args()
 
     k6_key = lambda row: row["run"]
@@ -55,8 +56,8 @@ def main():
         if run not in before_k6:
             continue
         b, a = before_k6[run], after_k6[run]
-        sb = before_srv.get((run, "GET", args.route), {})
-        sa = after_srv.get((run, "GET", args.route), {})
+        sb = before_srv.get((run, args.method, args.route), {})
+        sa = after_srv.get((run, args.method, args.route), {})
         rows.append([run, b["req_per_s"], a["req_per_s"], change(b["req_per_s"], a["req_per_s"]),
                      b["p50_ms"], a["p50_ms"], b["p95_ms"], a["p95_ms"],
                      change(b["p95_ms"], a["p95_ms"]),
@@ -73,7 +74,7 @@ def main():
     widths = [max(len(str(x)) for x in col) for col in zip(header, *rows)] if rows else []
     for line in [header] + rows:
         print("  ".join(str(x).rjust(w) for x, w in zip(line, widths)))
-    print(f"\nServer route: GET {args.route}   ->  {out}")
+    print(f"\nServer route: {args.method} {args.route}   ->  {out}")
 
 
 if __name__ == "__main__":

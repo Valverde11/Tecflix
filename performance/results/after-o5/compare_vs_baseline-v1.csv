@@ -1,0 +1,4 @@
+run,req_s_before,req_s_after,req_s_change,p50_before,p50_after,p95_before,p95_after,p95_change,failed_before,failed_after,route_avg_before,route_avg_after,route_avg_change
+login_v8,10.8,33.9,+213.9%,756.62,229.61,1028.31,316.02,-69.3%,0,0,,,
+login_v32,12.4,40.2,+224.2%,2588.18,792.42,3271.23,1225.08,-62.5%,0,0,,,
+register_v8,10.6,33.2,+213.2%,781.09,238.43,1038.66,319.63,-69.2%,0,0,,,

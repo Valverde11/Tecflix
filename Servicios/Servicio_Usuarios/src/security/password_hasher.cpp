@@ -5,7 +5,12 @@
 #include <mbedtls/md.h>
 #include <mbedtls/pkcs5.h>
 
+#if defined(TECFLIX_USE_OPENSSL_PBKDF2)
+#include <openssl/evp.h>
+#endif
+
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 
 #include "tecflix/users/security/crypto_primitives.hpp"
@@ -70,9 +75,28 @@ bool PasswordHasher::Verify(const std::string& password, const Hash& expected,
                                               actual.size());
 }
 
+// Las dos ramas calculan el mismo PBKDF2-HMAC-SHA256 estándar (mismos bytes, lo
+// comprueban los vectores de password_hasher_test.cpp), así que cambiar de una a
+// otra no invalida contraseñas guardadas. OpenSSL es unas 4.5 veces más rápido en
+// x86 porque usa las instrucciones SHA del procesador (SHA-NI) y mbedTLS no; con
+// 600 000 iteraciones eso limitaba login y registro a ~12 por segundo.
+// CMake activa OpenSSL solo si lo encuentra; si no, se usa mbedTLS como antes.
 PasswordHasher::Hash PasswordHasher::Derive(const std::string& password,
                                             const Salt& salt) const {
   Hash hash{};
+#if defined(TECFLIX_USE_OPENSSL_PBKDF2)
+  // La API de OpenSSL recibe int: se rechazan tamaños que no caben.
+  constexpr auto kIntMax = static_cast<std::size_t>(std::numeric_limits<int>::max());
+  if (password.size() > kIntMax || iterations_ > kIntMax) {
+    throw std::runtime_error("Parámetros de PBKDF2 demasiado grandes");
+  }
+  if (PKCS5_PBKDF2_HMAC(password.data(), static_cast<int>(password.size()),
+                        salt.data(), static_cast<int>(salt.size()),
+                        static_cast<int>(iterations_), EVP_sha256(),
+                        static_cast<int>(hash.size()), hash.data()) != 1) {
+    throw std::runtime_error("Falló el cálculo de PBKDF2 (OpenSSL)");
+  }
+#else
   CryptoPrimitives::RequireSuccess(
       mbedtls_pkcs5_pbkdf2_hmac_ext(
           MBEDTLS_MD_SHA256,
@@ -80,6 +104,7 @@ PasswordHasher::Hash PasswordHasher::Derive(const std::string& password,
           password.size(), salt.data(), salt.size(), iterations_,
           static_cast<std::uint32_t>(hash.size()), hash.data()),
       "el cálculo de PBKDF2");
+#endif
   return hash;
 }
 

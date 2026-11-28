@@ -109,6 +109,19 @@ TEST(PasswordHasherConstructionTest, RejectsZeroIterations) {
   EXPECT_THROW(PasswordHasher(0), std::invalid_argument);
 }
 
+// Mismo vector con las iteraciones de producción, calculado con hashlib.pbkdf2_hmac
+// de Python. Garantiza que cambiar la librería de PBKDF2 (mbedTLS u OpenSSL, ver
+// password_hasher.cpp) no invalida las contraseñas ya guardadas en users.dat.
+TEST(PasswordHasherConstructionTest, MatchesVectorWithProductionIterations) {
+  const PasswordHasher::Hash expected = {
+      0xDD, 0xC0, 0x00, 0x6A, 0x10, 0x9E, 0x3E, 0xB0, 0x7E, 0x70, 0x9D,
+      0x35, 0xBB, 0x24, 0xDB, 0xF7, 0xE0, 0x4F, 0xBB, 0x3F, 0x1D, 0x04,
+      0xBB, 0xA7, 0x3B, 0x2E, 0x1C, 0xE3, 0x68, 0xA3, 0xC8, 0xE1};
+  const PasswordHasher hasher;
+
+  EXPECT_TRUE(hasher.Verify("contraseña-tecflix", expected, SequentialSalt()));
+}
+
 TEST(PasswordHasherConstructionTest, WorksWithProductionIterations) {
   const PasswordHasher hasher;
   const auto credentials = hasher.Create("secreta");

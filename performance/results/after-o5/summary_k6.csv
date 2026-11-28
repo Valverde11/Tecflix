@@ -1,0 +1,4 @@
+run,scenario,vus,think,requests,req_per_s,p50_ms,p95_ms,p99_ms,max_ms,failed_pct
+login_v8,login,8,0,2036,33.9,229.61,316.02,325.63,366.76,0
+login_v32,login,32,0,2429,40.2,792.42,1225.08,1430.7,2215.45,0
+register_v8,register,8,0,1994,33.2,238.43,319.63,331.51,401.47,0
